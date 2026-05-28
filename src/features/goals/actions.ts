@@ -47,6 +47,33 @@ export async function createGoal(input: CreateGoalInput) {
   return { ok: true as const };
 }
 
+export type UpdateGoalInput = {
+  id: string;
+  label: string;
+  target: number;
+};
+
+export async function updateGoal(input: UpdateGoalInput) {
+  const label = input.label.trim();
+  if (!label) return { ok: false as const, error: "Label obrigatório." };
+  if (label.length > 60)
+    return { ok: false as const, error: "Label muito longo." };
+  if (!Number.isFinite(input.target) || input.target <= 0 || input.target > 10000)
+    return { ok: false as const, error: "Meta inválida." };
+
+  const userId = await getCurrentUserId();
+  const updated = await prisma.goal.updateMany({
+    where: { id: input.id, userId },
+    data: { label, target: input.target },
+  });
+  if (updated.count === 0)
+    return { ok: false as const, error: "Meta não encontrada." };
+
+  revalidatePath("/");
+  revalidatePath("/goals");
+  return { ok: true as const };
+}
+
 export async function deleteGoal(goalId: string) {
   const userId = await getCurrentUserId();
   const deleted = await prisma.goal.deleteMany({

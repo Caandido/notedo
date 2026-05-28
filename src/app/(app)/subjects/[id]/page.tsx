@@ -14,6 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { TopicTree } from "@/components/subjects/topic-tree";
 import { NewTopicForm } from "@/components/subjects/new-topic-form";
+import { EditSubjectForm } from "@/components/subjects/edit-subject-form";
 import { formatDuration, formatHours } from "@/lib/utils";
 import { getSubjectDetail } from "@/lib/queries";
 
@@ -73,37 +74,40 @@ export default async function SubjectDetailPage({
           </Button>
         </div>
 
-        <section className="flex flex-wrap items-center gap-3">
-          <span
-            className="flex size-12 items-center justify-center rounded-lg"
-            style={{
-              backgroundColor: `${subject.color}26`,
-              border: `1px solid ${subject.color}66`,
-            }}
-          >
+        <section className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex items-center gap-3">
             <span
-              className="size-3 rounded-full"
-              style={{ backgroundColor: subject.color }}
-            />
-          </span>
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl font-semibold tracking-tight">
-                {subject.name}
-              </h1>
-              <Badge variant="outline" className="text-[10px]">
-                {priorityLabel[subject.priority]}
-              </Badge>
-              {subject.archived && (
-                <Badge variant="secondary">Arquivada</Badge>
+              className="flex size-12 items-center justify-center rounded-lg"
+              style={{
+                backgroundColor: `${subject.color}26`,
+                border: `1px solid ${subject.color}66`,
+              }}
+            >
+              <span
+                className="size-3 rounded-full"
+                style={{ backgroundColor: subject.color }}
+              />
+            </span>
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl font-semibold tracking-tight">
+                  {subject.name}
+                </h1>
+                <Badge variant="outline" className="text-[10px]">
+                  {priorityLabel[subject.priority]}
+                </Badge>
+                {subject.archived && (
+                  <Badge variant="secondary">Arquivada</Badge>
+                )}
+            </div>
+              {subject.tags.length > 0 && (
+                <p className="text-xs text-[var(--color-muted-foreground)]">
+                  {subject.tags.join(" · ")}
+                </p>
               )}
             </div>
-            {subject.tags.length > 0 && (
-              <p className="text-xs text-[var(--color-muted-foreground)]">
-                {subject.tags.join(" · ")}
-              </p>
-            )}
           </div>
+          <EditSubjectForm subject={subject} />
         </section>
 
         <section className="grid grid-cols-1 gap-3 sm:grid-cols-3">

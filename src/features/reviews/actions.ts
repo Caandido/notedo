@@ -116,6 +116,34 @@ export async function skipReview(reviewId: string) {
   return { ok: true as const };
 }
 
+export type UpdateReviewInput = {
+  id: string;
+  title: string;
+  scheduledAt: string;
+};
+
+export async function updateReview(input: UpdateReviewInput) {
+  const title = input.title.trim();
+  if (!title) return { ok: false as const, error: "Título obrigatório." };
+  if (title.length > 120)
+    return { ok: false as const, error: "Título muito longo." };
+  const date = new Date(input.scheduledAt);
+  if (Number.isNaN(date.getTime()))
+    return { ok: false as const, error: "Data inválida." };
+
+  const userId = await getCurrentUserId();
+  const updated = await prisma.review.updateMany({
+    where: { id: input.id, userId },
+    data: { title, scheduledAt: date },
+  });
+  if (updated.count === 0)
+    return { ok: false as const, error: "Revisão não encontrada." };
+
+  revalidatePath("/reviews");
+  revalidatePath("/");
+  return { ok: true as const };
+}
+
 export async function deleteReview(reviewId: string) {
   const userId = await getCurrentUserId();
   const deleted = await prisma.review.deleteMany({
