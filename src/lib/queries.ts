@@ -508,3 +508,85 @@ export async function getStatsForPeriod(periodDays: number) {
 }
 
 export type StatsView = Awaited<ReturnType<typeof getStatsForPeriod>>;
+
+export type TopicNode = {
+  id: string;
+  title: string;
+  notes: string | null;
+  order: number;
+  children: TopicNode[];
+};
+
+export async function getSubjectDetail(subjectId: string) {
+  const userId = await getCurrentUserId();
+
+  const subject = await prisma.subject.findFirst({
+    where: { id: subjectId, userId },
+  });
+  if (!subject) return null;
+
+  const [topics, sessions, sessionCount, totalAgg] = await Promise.all([
+    prisma.topic.findMany({
+      where: { subjectId: subject.id },
+      orderBy: [{ order: "asc" }, { createdAt: "asc" }],
+    }),
+    prisma.studySession.findMany({
+      where: { userId, subjectId: subject.id },
+      orderBy: { startedAt: "desc" },
+      take: 10,
+    }),
+    prisma.studySession.count({
+      where: { userId, subjectId: subject.id },
+    }),
+    prisma.studySession.aggregate({
+      where: { userId, subjectId: subject.id },
+      _sum: { durationSeconds: true },
+    }),
+  ]);
+
+  const byParent = new Map<string | null, typeof topics>();
+  for (const t of topics) {
+    const key = t.parentId ?? null;
+    const arr = byParent.get(key) ?? [];
+    arr.push(t);
+    byParent.set(key, arr);
+  }
+
+  function buildTree(parentId: string | null): TopicNode[] {
+    const list = byParent.get(parentId) ?? [];
+    return list.map((t) => ({
+      id: t.id,
+      title: t.title,
+      notes: t.notes,
+      order: t.order,
+      children: buildTree(t.id),
+    }));
+  }
+
+  const tree = buildTree(null);
+
+  return {
+    subject: {
+      id: subject.id,
+      name: subject.name,
+      color: subject.color,
+      priority: subject.priority.toLowerCase() as "low" | "medium" | "high",
+      progress: subject.progress,
+      tags: subject.tags,
+      archived: subject.archived,
+    },
+    topics: tree,
+    topicCount: topics.length,
+    totalSeconds: totalAgg._sum.durationSeconds ?? 0,
+    sessionCount,
+    recentSessions: sessions.map((s) => ({
+      id: s.id,
+      mode: s.mode.toLowerCase() as "pomodoro" | "free" | "reverse" | "custom",
+      startedAt: s.startedAt,
+      durationSeconds: s.durationSeconds,
+      focusScore: s.focusScore,
+    })),
+  };
+}
+
+export type SubjectDetail = Awaited<ReturnType<typeof getSubjectDetail>>;
