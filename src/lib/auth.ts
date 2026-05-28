@@ -1,18 +1,14 @@
-import { prisma } from "@/lib/prisma";
-
-const DEMO_EMAIL = "demo@notedo.app";
-
-let cachedUserId: string | null = null;
+import { auth } from "@/auth";
 
 export async function getCurrentUserId(): Promise<string> {
-  if (cachedUserId) return cachedUserId;
+  const session = await auth();
+  if (!session?.user?.id) {
+    throw new Error("Usuário não autenticado. Middleware deveria ter redirecionado para /sign-in.");
+  }
+  return session.user.id;
+}
 
-  const user = await prisma.user.upsert({
-    where: { email: DEMO_EMAIL },
-    update: {},
-    create: { email: DEMO_EMAIL, name: "Usuário Demo" },
-  });
-
-  cachedUserId = user.id;
-  return user.id;
+export async function getCurrentUser() {
+  const session = await auth();
+  return session?.user ?? null;
 }

@@ -19,6 +19,7 @@ import {
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { UserMenu } from "@/components/layout/user-menu";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -31,7 +32,13 @@ const navItems = [
   { href: "/ai", label: "IA", icon: Sparkles },
 ] as const;
 
-export function Sidebar() {
+type SidebarUser = {
+  name?: string | null;
+  email?: string | null;
+  image?: string | null;
+} | null;
+
+export function Sidebar({ user }: { user?: SidebarUser }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = React.useState(false);
 
@@ -73,7 +80,7 @@ export function Sidebar() {
         })}
       </nav>
 
-      <div className="border-t border-[var(--color-border)] p-2">
+      <div className="space-y-1 border-t border-[var(--color-border)] p-2">
         <Link
           href="/settings"
           className={cn(
@@ -86,6 +93,29 @@ export function Sidebar() {
           <Settings className="size-4 shrink-0" />
           {!collapsed && <span>Configurações</span>}
         </Link>
+
+        {user && (
+          <div
+            className={cn(
+              "flex items-center gap-2.5 rounded-md px-2 py-1.5",
+              collapsed && "justify-center"
+            )}
+          >
+            <UserMenu user={user} />
+            {!collapsed && (
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-xs font-medium">
+                  {user.name ?? "Conta"}
+                </p>
+                {user.email && (
+                  <p className="truncate text-[10px] text-[var(--color-muted-foreground)]">
+                    {user.email}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <Button
