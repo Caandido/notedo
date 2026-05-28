@@ -41,3 +41,7 @@ yarn-error.log*
 next-env.d.ts
 
 /src/generated/prisma
+
+# Project-specific notes (not for public repo)
+CLAUDE.md
+AGENTS.md
