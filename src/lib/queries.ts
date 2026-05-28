@@ -389,3 +389,122 @@ export async function getDueFlashcards(deckName?: string) {
 }
 
 export type DueCard = Awaited<ReturnType<typeof getDueFlashcards>>[number];
+
+export async function getStatsForPeriod(periodDays: number) {
+  const userId = await getCurrentUserId();
+
+  const since = daysAgo(periodDays - 1);
+
+  const sessions = await prisma.studySession.findMany({
+    where: { userId, startedAt: { gte: since } },
+    select: {
+      durationSeconds: true,
+      startedAt: true,
+      focusScore: true,
+      mode: true,
+      subjectId: true,
+      subject: { select: { name: true, color: true } },
+    },
+  });
+
+  const totalSeconds = sessions.reduce((a, s) => a + s.durationSeconds, 0);
+  const focusScores = sessions
+    .map((s) => s.focusScore)
+    .filter((x): x is number => x != null);
+  const focusAvg =
+    focusScores.length > 0
+      ? Math.round(focusScores.reduce((a, b) => a + b, 0) / focusScores.length)
+      : 0;
+
+  const daySet = new Set(
+    sessions.map((s) => new Date(s.startedAt).toISOString().slice(0, 10))
+  );
+
+  const avgPerActiveDay =
+    daySet.size > 0 ? totalSeconds / 3600 / daySet.size : 0;
+
+  const dayHoursMap = new Map<string, number>();
+  sessions.forEach((s) => {
+    const key = new Date(s.startedAt).toISOString().slice(0, 10);
+    dayHoursMap.set(key, (dayHoursMap.get(key) ?? 0) + s.durationSeconds);
+  });
+
+  let bestDay: { date: string; hours: number } | null = null;
+  for (const [date, secs] of dayHoursMap) {
+    const hours = secs / 3600;
+    if (!bestDay || hours > bestDay.hours) bestDay = { date, hours };
+  }
+
+  const weekdayLabels = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+  const byWeekday = weekdayLabels.map((label) => ({
+    label,
+    hours: 0,
+  }));
+  sessions.forEach((s) => {
+    const idx = new Date(s.startedAt).getDay();
+    byWeekday[idx].hours += s.durationSeconds / 3600;
+  });
+  byWeekday.forEach((d) => (d.hours = +d.hours.toFixed(2)));
+
+  const subjectMap = new Map<
+    string,
+    { id: string; name: string; color: string; seconds: number }
+  >();
+  sessions.forEach((s) => {
+    const id = s.subjectId ?? "_none";
+    const name = s.subject?.name ?? "Sem matéria";
+    const color = s.subject?.color ?? "#71717a";
+    const existing = subjectMap.get(id);
+    if (existing) existing.seconds += s.durationSeconds;
+    else subjectMap.set(id, { id, name, color, seconds: s.durationSeconds });
+  });
+  const bySubject = Array.from(subjectMap.values())
+    .map((s) => ({
+      id: s.id,
+      name: s.name,
+      color: s.color,
+      hours: +(s.seconds / 3600).toFixed(2),
+    }))
+    .sort((a, b) => b.hours - a.hours);
+
+  const modeLabels: Record<string, string> = {
+    POMODORO: "Pomodoro",
+    FREE: "Livre",
+    REVERSE: "Reverso",
+    CUSTOM: "Custom",
+  };
+  const modeColors: Record<string, string> = {
+    POMODORO: "#a78bfa",
+    FREE: "#60a5fa",
+    REVERSE: "#fbbf24",
+    CUSTOM: "#34d399",
+  };
+  const modeMap = new Map<string, number>();
+  sessions.forEach((s) => {
+    modeMap.set(s.mode, (modeMap.get(s.mode) ?? 0) + s.durationSeconds);
+  });
+  const byMode = Array.from(modeMap.entries())
+    .map(([mode, secs]) => ({
+      mode,
+      label: modeLabels[mode] ?? mode,
+      color: modeColors[mode] ?? "#94a3b8",
+      hours: +(secs / 3600).toFixed(2),
+      sessions: sessions.filter((s) => s.mode === mode).length,
+    }))
+    .sort((a, b) => b.hours - a.hours);
+
+  return {
+    period: periodDays,
+    totalSeconds,
+    sessionCount: sessions.length,
+    activeDays: daySet.size,
+    focusAvg,
+    avgPerActiveDay: +avgPerActiveDay.toFixed(2),
+    bestDay,
+    byWeekday,
+    bySubject,
+    byMode,
+  };
+}
+
+export type StatsView = Awaited<ReturnType<typeof getStatsForPeriod>>;
