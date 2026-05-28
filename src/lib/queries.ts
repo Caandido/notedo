@@ -204,3 +204,80 @@ export async function getSubjectsForUser() {
 }
 
 export type SubjectView = Awaited<ReturnType<typeof getSubjectsForUser>>[number];
+
+export async function getGoalsWithProgress() {
+  const userId = await getCurrentUserId();
+
+  const today = startOfDay();
+  const weekStart = daysAgo(6);
+  const monthStart = (() => {
+    const d = new Date();
+    d.setDate(1);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  })();
+
+  const [goals, todaySessions, weekSessions, monthSessions] = await Promise.all(
+    [
+      prisma.goal.findMany({
+        where: { userId },
+        orderBy: [{ active: "desc" }, { createdAt: "asc" }],
+      }),
+      prisma.studySession.findMany({
+        where: { userId, startedAt: { gte: today } },
+        select: { durationSeconds: true },
+      }),
+      prisma.studySession.findMany({
+        where: { userId, startedAt: { gte: weekStart } },
+        select: { durationSeconds: true },
+      }),
+      prisma.studySession.findMany({
+        where: { userId, startedAt: { gte: monthStart } },
+        select: { durationSeconds: true },
+      }),
+    ]
+  );
+
+  const buckets = {
+    daily: {
+      hours: todaySessions.reduce((a, s) => a + s.durationSeconds, 0) / 3600,
+      sessions: todaySessions.length,
+      tasks: 0,
+      reviews: 0,
+    },
+    weekly: {
+      hours: weekSessions.reduce((a, s) => a + s.durationSeconds, 0) / 3600,
+      sessions: weekSessions.length,
+      tasks: 0,
+      reviews: 0,
+    },
+    monthly: {
+      hours: monthSessions.reduce((a, s) => a + s.durationSeconds, 0) / 3600,
+      sessions: monthSessions.length,
+      tasks: 0,
+      reviews: 0,
+    },
+  } as const;
+
+  return goals.map((g) => {
+    const type = g.type.toLowerCase() as "daily" | "weekly" | "monthly";
+    const metric = g.metric.toLowerCase() as
+      | "hours"
+      | "tasks"
+      | "sessions"
+      | "reviews";
+    const current = +buckets[type][metric].toFixed(2);
+    return {
+      id: g.id,
+      label: g.label,
+      type,
+      metric,
+      target: g.target,
+      current,
+      active: g.active,
+      progress: Math.min(100, (current / g.target) * 100),
+    };
+  });
+}
+
+export type GoalView = Awaited<ReturnType<typeof getGoalsWithProgress>>[number];
