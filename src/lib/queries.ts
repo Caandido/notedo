@@ -702,6 +702,112 @@ export async function getCalendarMonth(year: number, month: number) {
 
 export type CalendarMonth = Awaited<ReturnType<typeof getCalendarMonth>>;
 
+export async function getTopicDetail(topicId: string) {
+  const userId = await getCurrentUserId();
+
+  const topic = await prisma.topic.findFirst({
+    where: { id: topicId, subject: { userId } },
+    include: {
+      subject: { select: { id: true, name: true, color: true } },
+      parent: { select: { id: true, title: true } },
+    },
+  });
+  if (!topic) return null;
+
+  const ancestors: { id: string; title: string }[] = [];
+  let cursor = topic.parent;
+  while (cursor) {
+    ancestors.unshift({ id: cursor.id, title: cursor.title });
+    const next = await prisma.topic.findFirst({
+      where: { id: cursor.id },
+      select: { parent: { select: { id: true, title: true } } },
+    });
+    cursor = next?.parent ?? null;
+  }
+
+  const [childrenRaw, recentSessions, sessionCount, totalAgg, descendantIds] =
+    await Promise.all([
+      prisma.topic.findMany({
+        where: { subjectId: topic.subjectId },
+        orderBy: [{ order: "asc" }, { createdAt: "asc" }],
+      }),
+      prisma.studySession.findMany({
+        where: { userId, topicId: topic.id },
+        orderBy: { startedAt: "desc" },
+        take: 10,
+      }),
+      prisma.studySession.count({
+        where: { userId, topicId: topic.id },
+      }),
+      prisma.studySession.aggregate({
+        where: { userId, topicId: topic.id },
+        _sum: { durationSeconds: true },
+      }),
+      collectDescendantIds(topic.id),
+    ]);
+
+  const byParent = new Map<string | null, typeof childrenRaw>();
+  for (const t of childrenRaw) {
+    const key = t.parentId ?? null;
+    const arr = byParent.get(key) ?? [];
+    arr.push(t);
+    byParent.set(key, arr);
+  }
+
+  function buildTree(parentId: string | null): TopicNode[] {
+    const list = byParent.get(parentId) ?? [];
+    return list.map((t) => ({
+      id: t.id,
+      title: t.title,
+      notes: t.notes,
+      order: t.order,
+      children: buildTree(t.id),
+    }));
+  }
+
+  const childrenTree = buildTree(topic.id);
+
+  return {
+    topic: {
+      id: topic.id,
+      title: topic.title,
+      notes: topic.notes,
+      order: topic.order,
+    },
+    subject: topic.subject,
+    ancestors,
+    children: childrenTree,
+    descendantCount: descendantIds.length,
+    totalSeconds: totalAgg._sum.durationSeconds ?? 0,
+    sessionCount,
+    recentSessions: recentSessions.map((s) => ({
+      id: s.id,
+      mode: s.mode.toLowerCase() as "pomodoro" | "free" | "reverse" | "custom",
+      startedAt: s.startedAt,
+      durationSeconds: s.durationSeconds,
+    })),
+  };
+}
+
+async function collectDescendantIds(rootId: string): Promise<string[]> {
+  const out: string[] = [];
+  const queue: string[] = [rootId];
+  while (queue.length > 0) {
+    const parentId = queue.shift()!;
+    const children = await prisma.topic.findMany({
+      where: { parentId },
+      select: { id: true },
+    });
+    for (const c of children) {
+      out.push(c.id);
+      queue.push(c.id);
+    }
+  }
+  return out;
+}
+
+export type TopicDetail = Awaited<ReturnType<typeof getTopicDetail>>;
+
 export async function getProfileSummary() {
   const userId = await getCurrentUserId();
 

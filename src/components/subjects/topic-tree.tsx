@@ -1,13 +1,14 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  Check,
   ChevronRight,
   FileText,
   Loader2,
   Trash2,
+  Check,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -108,7 +109,12 @@ function TopicItem({ subjectId, topic, depth }: TopicItemProps) {
         ) : (
           <span className="size-3.5 shrink-0" />
         )}
-        <span className="flex-1 truncate text-sm">{topic.title}</span>
+        <Link
+          href={`/topics/${topic.id}`}
+          className="flex-1 truncate text-sm hover:underline underline-offset-2"
+        >
+          {topic.title}
+        </Link>
         {hasNotes && !notesOpen && (
           <FileText className="size-3 shrink-0 text-[var(--color-muted-foreground)]" />
         )}

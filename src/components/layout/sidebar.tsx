@@ -12,7 +12,6 @@ import {
   LayoutDashboard,
   Repeat,
   Settings,
-  Sparkles,
   Target,
   Timer,
 } from "lucide-react";
@@ -29,7 +28,6 @@ const navItems = [
   { href: "/reviews", label: "Revisões", icon: Repeat },
   { href: "/calendar", label: "Calendário", icon: Calendar },
   { href: "/stats", label: "Estatísticas", icon: BarChart3 },
-  { href: "/ai", label: "IA", icon: Sparkles },
 ] as const;
 
 type SidebarUser = {
