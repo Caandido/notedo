@@ -11,6 +11,7 @@ import { useTimerStore, type TimerMode } from "@/stores/timer-store";
 import { useInterval } from "@/hooks/use-interval";
 import { cn, formatDuration } from "@/lib/utils";
 import { saveStudySession } from "@/features/timer/actions";
+import { loadSettings } from "@/lib/settings";
 
 type SubjectOption = { id: string; name: string; color: string };
 
@@ -47,6 +48,22 @@ export function TimerPageContent({ subjects }: TimerPageContentProps) {
   );
   const [saveState, setSaveState] = React.useState<SaveState>("idle");
   const [saveError, setSaveError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (running || elapsedSeconds > 0) return;
+    const settings = loadSettings();
+    const targets: Record<TimerMode, number> = {
+      pomodoro: settings.timer.pomodoroSeconds,
+      free: 0,
+      reverse: settings.timer.reverseSeconds,
+      custom: settings.timer.customSeconds,
+    };
+    const target = targets[mode];
+    if (target !== targetSeconds) {
+      useTimerStore.setState({ targetSeconds: target });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode]);
 
   useInterval(tick, running ? 250 : null);
 

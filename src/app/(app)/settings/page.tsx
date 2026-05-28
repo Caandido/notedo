@@ -1,11 +1,19 @@
-import { PagePlaceholder } from "@/components/layout/page-placeholder";
+import { Header } from "@/components/layout/header";
+import { SettingsView } from "@/components/settings/settings-view";
+import { getProfileSummary } from "@/lib/queries";
 
-export default function SettingsPage() {
+export const dynamic = "force-dynamic";
+
+export default async function SettingsPage() {
+  const profile = await getProfileSummary();
+
   return (
-    <PagePlaceholder
-      title="Configurações"
-      subtitle="Preferências, perfil e integrações"
-      description="Em breve: preferências do app, perfil, notificações, integrações e backup."
-    />
+    <>
+      <Header
+        title="Configurações"
+        subtitle="Preferências, perfil e defaults"
+      />
+      <SettingsView profile={profile} />
+    </>
   );
 }

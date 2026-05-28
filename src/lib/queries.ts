@@ -701,3 +701,25 @@ export async function getCalendarMonth(year: number, month: number) {
 }
 
 export type CalendarMonth = Awaited<ReturnType<typeof getCalendarMonth>>;
+
+export async function getProfileSummary() {
+  const userId = await getCurrentUserId();
+
+  const [user, subjectCount, sessionCount, flashcardCount] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: { name: true, email: true },
+    }),
+    prisma.subject.count({ where: { userId, archived: false } }),
+    prisma.studySession.count({ where: { userId } }),
+    prisma.flashcard.count({ where: { userId } }),
+  ]);
+
+  return {
+    name: user?.name ?? "Usuário",
+    email: user?.email ?? "—",
+    subjectCount,
+    sessionCount,
+    flashcardCount,
+  };
+}

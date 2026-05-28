@@ -1,11 +1,25 @@
-import { PagePlaceholder } from "@/components/layout/page-placeholder";
+import { Header } from "@/components/layout/header";
+import { FlashcardGenerator } from "@/components/ai/flashcard-generator";
+import { getFlashcardDecks } from "@/lib/queries";
 
-export default function AiPage() {
+export const dynamic = "force-dynamic";
+
+export default async function AiPage() {
+  const decks = await getFlashcardDecks();
+  const apiAvailable = Boolean(process.env.ANTHROPIC_API_KEY);
+
   return (
-    <PagePlaceholder
-      title="Assistente de IA"
-      subtitle="Cronogramas, resumos e flashcards automáticos"
-      description="Em breve: IA para gerar cronogramas, resumir anotações, criar flashcards, sugerir revisões e analisar sua produtividade."
-    />
+    <>
+      <Header
+        title="Assistente de IA"
+        subtitle="Gere flashcards a partir das suas anotações"
+      />
+      <div className="mx-auto max-w-3xl space-y-4 p-6">
+        <FlashcardGenerator
+          apiAvailable={apiAvailable}
+          knownDecks={decks.map((d) => d.deck)}
+        />
+      </div>
+    </>
   );
 }
