@@ -45,3 +45,5 @@ next-env.d.ts
 # Project-specific notes (not for public repo)
 CLAUDE.md
 AGENTS.md
+
+.vercel
