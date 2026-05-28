@@ -3,6 +3,7 @@ import Link from "next/link";
 import {
   ArrowLeft,
   Clock,
+  GraduationCap,
   History,
   Layers,
   Timer as TimerIcon,
@@ -15,8 +16,11 @@ import { Badge } from "@/components/ui/badge";
 import { TopicTree } from "@/components/subjects/topic-tree";
 import { NewTopicForm } from "@/components/subjects/new-topic-form";
 import { EditSubjectForm } from "@/components/subjects/edit-subject-form";
-import { formatDuration, formatHours } from "@/lib/utils";
-import { getSubjectDetail } from "@/lib/queries";
+import { GradeForm } from "@/components/grades/grade-form";
+import { GradeRow } from "@/components/grades/grade-row";
+import { gradeColorByPercent } from "@/components/grades/grade-styles";
+import { cn, formatDuration, formatHours } from "@/lib/utils";
+import { getGradesForSubject, getSubjectDetail } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -52,11 +56,17 @@ export default async function SubjectDetailPage({
   params,
 }: SubjectDetailPageProps) {
   const { id } = await params;
-  const detail = await getSubjectDetail(id);
+  const [detail, gradesData] = await Promise.all([
+    getSubjectDetail(id),
+    getGradesForSubject(id),
+  ]);
   if (!detail) notFound();
 
   const { subject, topics, topicCount, totalSeconds, sessionCount, recentSessions } =
     detail;
+  const subjectOption = [{ id: subject.id, name: subject.name, color: subject.color }];
+  const avgPercent =
+    gradesData.average !== null ? (gradesData.average / 10) * 100 : 0;
 
   return (
     <>
@@ -155,6 +165,57 @@ export default async function SubjectDetailPage({
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="flex items-center gap-2 text-sm">
+              <GraduationCap className="size-4 text-[var(--color-muted-foreground)]" />
+              Notas
+              {gradesData.grades.length > 0 && (
+                <Badge variant="outline" className="text-[10px]">
+                  {gradesData.grades.length}
+                </Badge>
+              )}
+            </CardTitle>
+            {gradesData.average !== null && (
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-[var(--color-muted-foreground)]">
+                  média
+                </span>
+                <span
+                  className={cn(
+                    "font-mono text-lg font-semibold tabular-nums",
+                    gradeColorByPercent(avgPercent)
+                  )}
+                >
+                  {gradesData.average.toFixed(1)}
+                </span>
+                <span className="text-[var(--color-muted-foreground)]">
+                  / 10
+                </span>
+              </div>
+            )}
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <GradeForm subjects={subjectOption} defaultSubjectId={subject.id} />
+            {gradesData.grades.length === 0 ? (
+              <p className="text-sm text-[var(--color-muted-foreground)]">
+                Nenhuma nota registrada nesta matéria ainda.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {gradesData.grades.map((g) => (
+                  <GradeRow
+                    key={g.id}
+                    grade={g}
+                    subjects={subjectOption}
+                    hideSubject
+                  />
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="flex items-center gap-2 text-sm">
               <Layers className="size-4 text-[var(--color-muted-foreground)]" />
               Tópicos
               {topicCount > 0 && (
@@ -169,7 +230,11 @@ export default async function SubjectDetailPage({
             <p className="mb-3 text-xs text-[var(--color-muted-foreground)]">
               Cada tópico vira uma página rica (igual Notion) com texto formatado, imagens, tabelas e equações.
             </p>
-            <TopicTree subjectId={subject.id} topics={topics} />
+            <TopicTree
+              subjectId={subject.id}
+              subjectColor={subject.color}
+              topics={topics}
+            />
           </CardContent>
         </Card>
 

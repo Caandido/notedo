@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import dynamic from "next/dynamic";
-import { FileText, StickyNote } from "lucide-react";
+import { FileText } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -15,9 +15,6 @@ interface WritingCardProps {
     totalTopics: number;
     topicsWithContent: number;
     topicsTouched: number;
-    totalNotes: number;
-    notesWithContent: number;
-    notesTouched: number;
   };
 }
 
@@ -53,32 +50,18 @@ export function WritingCard({ data, totals }: WritingCardProps) {
       <CardContent className="space-y-4">
         <Impl data={data} />
 
-        <div className="grid grid-cols-2 gap-3 border-t border-[var(--color-border)] pt-3 text-xs">
-          <div className="flex items-center gap-2">
-            <FileText className="size-3.5 text-[var(--color-muted-foreground)]" />
-            <div>
-              <p className="text-[var(--color-muted-foreground)]">Tópicos</p>
-              <p className="font-medium">
-                {totals.topicsWithContent}
-                <span className="text-[var(--color-muted-foreground)]">
-                  {" "}
-                  / {totals.totalTopics} com conteúdo
-                </span>
-              </p>
-            </div>
+        <div className="grid grid-cols-3 gap-3 border-t border-[var(--color-border)] pt-3 text-xs">
+          <div>
+            <p className="text-[var(--color-muted-foreground)]">Tópicos totais</p>
+            <p className="font-medium tabular-nums">{totals.totalTopics}</p>
           </div>
-          <div className="flex items-center gap-2">
-            <StickyNote className="size-3.5 text-[var(--color-muted-foreground)]" />
-            <div>
-              <p className="text-[var(--color-muted-foreground)]">Notas</p>
-              <p className="font-medium">
-                {totals.notesWithContent}
-                <span className="text-[var(--color-muted-foreground)]">
-                  {" "}
-                  / {totals.totalNotes} preenchidas
-                </span>
-              </p>
-            </div>
+          <div>
+            <p className="text-[var(--color-muted-foreground)]">Com conteúdo</p>
+            <p className="font-medium tabular-nums">{totals.topicsWithContent}</p>
+          </div>
+          <div>
+            <p className="text-[var(--color-muted-foreground)]">Editados no período</p>
+            <p className="font-medium tabular-nums">{totals.topicsTouched}</p>
           </div>
         </div>
       </CardContent>

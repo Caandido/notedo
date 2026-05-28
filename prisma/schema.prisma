@@ -29,7 +29,7 @@ model User {
   reviews    Review[]
   flashcards Flashcard[]
   events     CalendarEvent[]
-  notes      Note[]
+  grades     Grade[]
 }
 
 model Account {
@@ -89,6 +89,7 @@ model Subject {
   sessions  StudySession[]
   reviews   Review[]
   events    CalendarEvent[]
+  grades    Grade[]
 
   @@index([userId])
 }
@@ -236,16 +237,29 @@ model CalendarEvent {
   @@index([subjectId])
 }
 
-model Note {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  title     String
-  content   Json     @default("{}")
-  pinned    Boolean  @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+enum GradeType {
+  EXAM
+  ASSIGNMENT
+  QUIZ
+  OTHER
+}
 
-  @@index([userId])
-  @@index([userId, updatedAt])
+model Grade {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subjectId String
+  subject   Subject   @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  title     String
+  type      GradeType @default(EXAM)
+  score     Float
+  maxScore  Float     @default(10)
+  weight    Float     @default(1)
+  date      DateTime  @default(now())
+  comments  String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([userId, date])
+  @@index([subjectId])
 }

@@ -181,7 +181,11 @@ export default async function TopicDetailPage({
                 neste tópico.
               </p>
             ) : (
-              <TopicTree subjectId={subject.id} topics={children} />
+              <TopicTree
+                subjectId={subject.id}
+                subjectColor={subject.color}
+                topics={children}
+              />
             )}
           </CardContent>
         </Card>

@@ -513,29 +513,18 @@ export async function getContentStatsForPeriod(periodDays: number) {
   const userId = await getCurrentUserId();
   const since = daysAgo(periodDays - 1);
 
-  const [allTopics, topicsTouched, allNotes, notesTouched] =
-    await Promise.all([
-      prisma.topic.findMany({
-        where: { subject: { userId } },
-        select: { id: true, content: true, updatedAt: true },
-      }),
-      prisma.topic.count({
-        where: { subject: { userId }, updatedAt: { gte: since } },
-      }),
-      prisma.note.findMany({
-        where: { userId },
-        select: { id: true, content: true, updatedAt: true },
-      }),
-      prisma.note.count({
-        where: { userId, updatedAt: { gte: since } },
-      }),
-    ]);
+  const [allTopics, topicsTouched] = await Promise.all([
+    prisma.topic.findMany({
+      where: { subject: { userId } },
+      select: { id: true, content: true, updatedAt: true },
+    }),
+    prisma.topic.count({
+      where: { subject: { userId }, updatedAt: { gte: since } },
+    }),
+  ]);
 
   const topicsWithContent = allTopics.filter((t) =>
     hasTopicContent(t.content)
-  ).length;
-  const notesWithContent = allNotes.filter((n) =>
-    hasTopicContent(n.content)
   ).length;
 
   const dayLabels = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
@@ -556,20 +545,11 @@ export async function getContentStatsForPeriod(periodDays: number) {
     const slot = byDate.get(key);
     if (slot) slot.edits += 1;
   }
-  for (const n of allNotes) {
-    if (n.updatedAt.getTime() < sinceMs) continue;
-    const key = n.updatedAt.toISOString().slice(0, 10);
-    const slot = byDate.get(key);
-    if (slot) slot.edits += 1;
-  }
 
   return {
     totalTopics: allTopics.length,
     topicsWithContent,
     topicsTouched,
-    totalNotes: allNotes.length,
-    notesWithContent,
-    notesTouched,
     writingByDay,
   };
 }
@@ -583,6 +563,8 @@ export type TopicNode = {
   title: string;
   hasContent: boolean;
   order: number;
+  updatedAt: Date;
+  descendantCount: number;
   children: TopicNode[];
 };
 
@@ -630,13 +612,21 @@ export async function getSubjectDetail(subjectId: string) {
 
   function buildTree(parentId: string | null): TopicNode[] {
     const list = byParent.get(parentId) ?? [];
-    return list.map((t) => ({
-      id: t.id,
-      title: t.title,
-      hasContent: hasTopicContent(t.content),
-      order: t.order,
-      children: buildTree(t.id),
-    }));
+    return list.map((t) => {
+      const children = buildTree(t.id);
+      const descendantCount =
+        children.length +
+        children.reduce((a, c) => a + c.descendantCount, 0);
+      return {
+        id: t.id,
+        title: t.title,
+        hasContent: hasTopicContent(t.content),
+        order: t.order,
+        updatedAt: t.updatedAt,
+        descendantCount,
+        children,
+      };
+    });
   }
 
   const tree = buildTree(null);
@@ -859,13 +849,21 @@ export async function getTopicDetail(topicId: string) {
 
   function buildTree(parentId: string | null): TopicNode[] {
     const list = byParent.get(parentId) ?? [];
-    return list.map((t) => ({
-      id: t.id,
-      title: t.title,
-      hasContent: hasTopicContent(t.content),
-      order: t.order,
-      children: buildTree(t.id),
-    }));
+    return list.map((t) => {
+      const children = buildTree(t.id);
+      const descendantCount =
+        children.length +
+        children.reduce((a, c) => a + c.descendantCount, 0);
+      return {
+        id: t.id,
+        title: t.title,
+        hasContent: hasTopicContent(t.content),
+        order: t.order,
+        updatedAt: t.updatedAt,
+        descendantCount,
+        children,
+      };
+    });
   }
 
   const childrenTree = buildTree(topic.id);
@@ -935,27 +933,133 @@ export async function getEventsForRange(start: Date, end: Date) {
 
 export type EventView = Awaited<ReturnType<typeof getEventsForRange>>[number];
 
-export async function getNotesForUser() {
-  const userId = await getCurrentUserId();
-  return prisma.note.findMany({
-    where: { userId },
-    orderBy: [{ pinned: "desc" }, { updatedAt: "desc" }],
-    select: {
-      id: true,
-      title: true,
-      pinned: true,
-      createdAt: true,
-      updatedAt: true,
-    },
-  });
+type GradeRaw = {
+  id: string;
+  subjectId: string;
+  title: string;
+  type: "EXAM" | "ASSIGNMENT" | "QUIZ" | "OTHER";
+  score: number;
+  maxScore: number;
+  weight: number;
+  date: Date;
+  comments: string | null;
+  subject: { id: string; name: string; color: string };
+};
+
+function gradeToView(g: GradeRaw) {
+  const percent = (g.score / g.maxScore) * 100;
+  return {
+    id: g.id,
+    subjectId: g.subjectId,
+    subjectName: g.subject.name,
+    subjectColor: g.subject.color,
+    title: g.title,
+    type: g.type.toLowerCase() as "exam" | "assignment" | "quiz" | "other",
+    score: g.score,
+    maxScore: g.maxScore,
+    weight: g.weight,
+    date: g.date,
+    comments: g.comments,
+    percent,
+  };
 }
 
-export async function getNoteById(noteId: string) {
-  const userId = await getCurrentUserId();
-  return prisma.note.findFirst({
-    where: { id: noteId, userId },
-  });
+function weightedAverage(
+  grades: { score: number; maxScore: number; weight: number }[]
+) {
+  if (grades.length === 0) return null;
+  const totalWeight = grades.reduce((a, g) => a + g.weight, 0);
+  if (totalWeight === 0) return null;
+  const weightedSum = grades.reduce(
+    (a, g) => a + (g.score / g.maxScore) * 10 * g.weight,
+    0
+  );
+  return weightedSum / totalWeight;
 }
+
+export async function getGradesForUser() {
+  const userId = await getCurrentUserId();
+  const grades = await prisma.grade.findMany({
+    where: { userId },
+    orderBy: { date: "desc" },
+    include: {
+      subject: { select: { id: true, name: true, color: true } },
+    },
+  });
+  return grades.map(gradeToView);
+}
+
+export type GradeView = ReturnType<typeof gradeToView>;
+
+export async function getGradesForSubject(subjectId: string) {
+  const userId = await getCurrentUserId();
+  const grades = await prisma.grade.findMany({
+    where: { userId, subjectId },
+    orderBy: { date: "desc" },
+    include: {
+      subject: { select: { id: true, name: true, color: true } },
+    },
+  });
+  const view = grades.map(gradeToView);
+  const avg = weightedAverage(grades);
+  return { grades: view, average: avg };
+}
+
+export async function getGradesSummary() {
+  const userId = await getCurrentUserId();
+
+  const [grades, subjects] = await Promise.all([
+    prisma.grade.findMany({
+      where: { userId },
+      include: { subject: { select: { id: true, name: true, color: true } } },
+    }),
+    prisma.subject.findMany({
+      where: { userId, archived: false },
+      select: { id: true, name: true, color: true },
+      orderBy: { updatedAt: "desc" },
+    }),
+  ]);
+
+  const bySubjectMap = new Map<
+    string,
+    { id: string; name: string; color: string; grades: typeof grades }
+  >();
+  for (const s of subjects) {
+    bySubjectMap.set(s.id, { ...s, grades: [] });
+  }
+  for (const g of grades) {
+    const slot = bySubjectMap.get(g.subjectId);
+    if (slot) slot.grades.push(g);
+  }
+
+  const bySubject = Array.from(bySubjectMap.values())
+    .map((s) => ({
+      id: s.id,
+      name: s.name,
+      color: s.color,
+      count: s.grades.length,
+      average: weightedAverage(s.grades),
+    }))
+    .sort((a, b) => {
+      if (a.count === 0 && b.count > 0) return 1;
+      if (b.count === 0 && a.count > 0) return -1;
+      return (b.average ?? 0) - (a.average ?? 0);
+    });
+
+  const overall = weightedAverage(grades);
+
+  return {
+    totalGrades: grades.length,
+    overallAverage: overall,
+    bySubject,
+    recent: grades
+      .sort((a, b) => b.date.getTime() - a.date.getTime())
+      .slice(0, 5)
+      .map(gradeToView),
+  };
+}
+
+export type GradesSummary = Awaited<ReturnType<typeof getGradesSummary>>;
 
 export async function getProfileSummary() {
   const userId = await getCurrentUserId();

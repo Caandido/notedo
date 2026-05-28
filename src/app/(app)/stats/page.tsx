@@ -13,8 +13,13 @@ import { SubjectChart } from "@/components/stats/subject-chart";
 import { WeekdayChart } from "@/components/stats/weekday-chart";
 import { ModeChart } from "@/components/stats/mode-chart";
 import { WritingCard } from "@/components/stats/writing-card";
+import { GradesOverview } from "@/components/stats/grades-overview";
 import { formatDuration } from "@/lib/utils";
-import { getContentStatsForPeriod, getStatsForPeriod } from "@/lib/queries";
+import {
+  getContentStatsForPeriod,
+  getGradesSummary,
+  getStatsForPeriod,
+} from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -28,9 +33,10 @@ export default async function StatsPage({ searchParams }: StatsPageProps) {
   const params = await searchParams;
   const periodParam = params.period ?? "30";
   const period = ALLOWED_PERIODS.has(periodParam) ? periodParam : "30";
-  const [stats, contentStats] = await Promise.all([
+  const [stats, contentStats, gradesSummary] = await Promise.all([
     getStatsForPeriod(parseInt(period, 10)),
     getContentStatsForPeriod(parseInt(period, 10)),
+    getGradesSummary(),
   ]);
 
   const bestDayLabel = stats.bestDay
@@ -104,16 +110,18 @@ export default async function StatsPage({ searchParams }: StatsPageProps) {
           />
         </section>
 
-        <section>
+        <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <GradesOverview
+            totalGrades={gradesSummary.totalGrades}
+            overallAverage={gradesSummary.overallAverage}
+            bySubject={gradesSummary.bySubject}
+          />
           <WritingCard
             data={contentStats.writingByDay}
             totals={{
               totalTopics: contentStats.totalTopics,
               topicsWithContent: contentStats.topicsWithContent,
               topicsTouched: contentStats.topicsTouched,
-              totalNotes: contentStats.totalNotes,
-              notesWithContent: contentStats.notesWithContent,
-              notesTouched: contentStats.notesTouched,
             }}
           />
         </section>
