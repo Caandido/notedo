@@ -1,9 +1,8 @@
-"use server";
+"use client";
 
-import { revalidatePath } from "next/cache";
-
-import { prisma } from "@/lib/prisma";
+import { cuid, db } from "@/lib/db";
 import { getCurrentUserId } from "@/lib/auth";
+import { invalidateAll } from "@/lib/db/use-repo";
 
 export type GradeType = "exam" | "assignment" | "quiz" | "other";
 
@@ -21,60 +20,45 @@ export type CreateGradeInput = {
 };
 
 function validate(input: Omit<CreateGradeInput, "subjectId">) {
-  const title = input.title.trim();
-  if (!title) return "Título obrigatório.";
-  if (title.length > 120) return "Título muito longo.";
+  if (!input.title.trim()) return "Título obrigatório.";
   if (!VALID_TYPES.includes(input.type)) return "Tipo inválido.";
   if (!Number.isFinite(input.score) || input.score < 0)
     return "Nota inválida.";
   if (!Number.isFinite(input.maxScore) || input.maxScore <= 0)
     return "Máxima inválida.";
   if (input.score > input.maxScore * 1.5)
-    return "Nota acima do limite (50% acima da máxima).";
-  if (!Number.isFinite(input.weight) || input.weight <= 0 || input.weight > 100)
-    return "Peso inválido (1-100).";
+    return "Nota acima do limite.";
+  if (!Number.isFinite(input.weight) || input.weight <= 0)
+    return "Peso inválido.";
   if (Number.isNaN(new Date(input.date).getTime())) return "Data inválida.";
   return null;
-}
-
-async function assertSubjectOwnership(subjectId: string, userId: string) {
-  const owned = await prisma.subject.findFirst({
-    where: { id: subjectId, userId },
-    select: { id: true },
-  });
-  return owned !== null;
 }
 
 export async function createGrade(input: CreateGradeInput) {
   const err = validate(input);
   if (err) return { ok: false as const, error: err };
 
-  const userId = await getCurrentUserId();
-  if (!(await assertSubjectOwnership(input.subjectId, userId))) {
+  const userId = getCurrentUserId();
+  const subject = await db().subjects.get(input.subjectId);
+  if (!subject || subject.userId !== userId)
     return { ok: false as const, error: "Matéria não encontrada." };
-  }
 
-  await prisma.grade.create({
-    data: {
-      userId,
-      subjectId: input.subjectId,
-      title: input.title.trim(),
-      type: input.type.toUpperCase() as
-        | "EXAM"
-        | "ASSIGNMENT"
-        | "QUIZ"
-        | "OTHER",
-      score: input.score,
-      maxScore: input.maxScore,
-      weight: input.weight,
-      date: new Date(input.date),
-      comments: input.comments?.trim() || undefined,
-    },
+  const now = Date.now();
+  await db().grades.add({
+    id: cuid(),
+    userId,
+    subjectId: input.subjectId,
+    title: input.title.trim(),
+    type: input.type.toUpperCase() as "EXAM" | "ASSIGNMENT" | "QUIZ" | "OTHER",
+    score: input.score,
+    maxScore: input.maxScore,
+    weight: input.weight,
+    date: new Date(input.date).getTime(),
+    comments: input.comments?.trim() || null,
+    createdAt: now,
+    updatedAt: now,
   });
-
-  revalidatePath("/notes");
-  revalidatePath("/stats");
-  revalidatePath(`/subjects/${input.subjectId}`);
+  invalidateAll();
   return { ok: true as const };
 }
 
@@ -84,48 +68,36 @@ export async function updateGrade(input: UpdateGradeInput) {
   const err = validate(input);
   if (err) return { ok: false as const, error: err };
 
-  const userId = await getCurrentUserId();
-  if (!(await assertSubjectOwnership(input.subjectId, userId))) {
+  const userId = getCurrentUserId();
+  const subject = await db().subjects.get(input.subjectId);
+  if (!subject || subject.userId !== userId)
     return { ok: false as const, error: "Matéria não encontrada." };
-  }
 
-  const updated = await prisma.grade.updateMany({
-    where: { id: input.id, userId },
-    data: {
-      subjectId: input.subjectId,
-      title: input.title.trim(),
-      type: input.type.toUpperCase() as
-        | "EXAM"
-        | "ASSIGNMENT"
-        | "QUIZ"
-        | "OTHER",
-      score: input.score,
-      maxScore: input.maxScore,
-      weight: input.weight,
-      date: new Date(input.date),
-      comments: input.comments?.trim() || null,
-    },
-  });
-  if (updated.count === 0)
+  const grade = await db().grades.get(input.id);
+  if (!grade || grade.userId !== userId)
     return { ok: false as const, error: "Nota não encontrada." };
 
-  revalidatePath("/notes");
-  revalidatePath("/stats");
-  revalidatePath(`/subjects/${input.subjectId}`);
+  await db().grades.update(input.id, {
+    subjectId: input.subjectId,
+    title: input.title.trim(),
+    type: input.type.toUpperCase() as "EXAM" | "ASSIGNMENT" | "QUIZ" | "OTHER",
+    score: input.score,
+    maxScore: input.maxScore,
+    weight: input.weight,
+    date: new Date(input.date).getTime(),
+    comments: input.comments?.trim() || null,
+    updatedAt: Date.now(),
+  });
+  invalidateAll();
   return { ok: true as const };
 }
 
 export async function deleteGrade(id: string) {
-  const userId = await getCurrentUserId();
-  const grade = await prisma.grade.findFirst({
-    where: { id, userId },
-    select: { id: true, subjectId: true },
-  });
-  if (!grade) return { ok: false as const, error: "Nota não encontrada." };
-  await prisma.grade.delete({ where: { id: grade.id } });
-
-  revalidatePath("/notes");
-  revalidatePath("/stats");
-  revalidatePath(`/subjects/${grade.subjectId}`);
+  const userId = getCurrentUserId();
+  const grade = await db().grades.get(id);
+  if (!grade || grade.userId !== userId)
+    return { ok: false as const, error: "Nota não encontrada." };
+  await db().grades.delete(id);
+  invalidateAll();
   return { ok: true as const };
 }

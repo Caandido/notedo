@@ -1,22 +1,30 @@
+"use client";
+
 import { Header } from "@/components/layout/header";
+import { PageLoading } from "@/components/layout/page-loading";
 import { ReviewsView } from "@/components/reviews/reviews-view";
+import { useRepoQuery } from "@/lib/db/use-repo";
 import {
   getFlashcardDecks,
   getReviewsForUser,
   getSubjectsForUser,
 } from "@/lib/queries";
 
-export const dynamic = "force-dynamic";
+export default function ReviewsPage() {
+  const reviews = useRepoQuery(() => getReviewsForUser(), []);
+  const decks = useRepoQuery(() => getFlashcardDecks(), []);
+  const subjects = useRepoQuery(() => getSubjectsForUser(), []);
 
-export default async function ReviewsPage() {
-  const [reviews, decks, subjects] = await Promise.all([
-    getReviewsForUser(),
-    getFlashcardDecks(),
-    getSubjectsForUser(),
-  ]);
+  if (
+    reviews.loading || !reviews.data ||
+    decks.loading || !decks.data ||
+    subjects.loading || !subjects.data
+  ) {
+    return <PageLoading />;
+  }
 
-  const dueToday = reviews.overdue.length + reviews.today.length;
-  const dueFlashcards = decks.reduce((acc, d) => acc + d.due, 0);
+  const dueToday = reviews.data.overdue.length + reviews.data.today.length;
+  const dueFlashcards = decks.data.reduce((acc, d) => acc + d.due, 0);
 
   return (
     <>
@@ -29,15 +37,15 @@ export default async function ReviewsPage() {
         }
       />
       <ReviewsView
-        subjects={subjects.map((s) => ({
+        subjects={subjects.data.map((s) => ({
           id: s.id,
           name: s.name,
           color: s.color,
         }))}
-        overdue={reviews.overdue}
-        today={reviews.today}
-        upcoming={reviews.upcoming}
-        decks={decks}
+        overdue={reviews.data.overdue}
+        today={reviews.data.today}
+        upcoming={reviews.data.upcoming}
+        decks={decks.data}
       />
     </>
   );

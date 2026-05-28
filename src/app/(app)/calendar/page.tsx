@@ -1,34 +1,45 @@
+"use client";
+
+import * as React from "react";
+import { useSearchParams } from "next/navigation";
+
 import { Header } from "@/components/layout/header";
+import { PageLoading } from "@/components/layout/page-loading";
 import { CalendarView } from "@/components/calendar/calendar-view";
 import { formatHours } from "@/lib/utils";
+import { useRepoQuery } from "@/lib/db/use-repo";
 import { getCalendarMonth, getSubjectsForUser } from "@/lib/queries";
 
-export const dynamic = "force-dynamic";
-
-interface CalendarPageProps {
-  searchParams: Promise<{ y?: string; m?: string }>;
-}
-
-function parseInt0(v: string | undefined, fallback: number): number {
+function parseInt0(v: string | null, fallback: number): number {
   if (!v) return fallback;
   const n = Number.parseInt(v, 10);
   if (!Number.isFinite(n)) return fallback;
   return n;
 }
 
-export default async function CalendarPage({
-  searchParams,
-}: CalendarPageProps) {
-  const params = await searchParams;
+export default function CalendarPage() {
+  return (
+    <React.Suspense fallback={<PageLoading />}>
+      <CalendarPageContent />
+    </React.Suspense>
+  );
+}
+
+function CalendarPageContent() {
+  const params = useSearchParams();
   const now = new Date();
-  const year = parseInt0(params.y, now.getFullYear());
-  const monthRaw = parseInt0(params.m, now.getMonth());
+  const year = parseInt0(params.get("y"), now.getFullYear());
+  const monthRaw = parseInt0(params.get("m"), now.getMonth());
   const month = Math.max(0, Math.min(11, monthRaw));
 
-  const [data, subjects] = await Promise.all([
-    getCalendarMonth(year, month),
-    getSubjectsForUser(),
-  ]);
+  const calendarQ = useRepoQuery(() => getCalendarMonth(year, month), [year, month]);
+  const subjectsQ = useRepoQuery(() => getSubjectsForUser(), []);
+
+  if (calendarQ.loading || !calendarQ.data || subjectsQ.loading || !subjectsQ.data) {
+    return <PageLoading />;
+  }
+  const data = calendarQ.data;
+  const subjects = subjectsQ.data;
 
   return (
     <>

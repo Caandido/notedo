@@ -1,15 +1,22 @@
+"use client";
+
 import { Target } from "lucide-react";
 
 import { Header } from "@/components/layout/header";
+import { PageLoading } from "@/components/layout/page-loading";
 import { Card, CardContent } from "@/components/ui/card";
 import { NewGoalForm } from "@/components/goals/new-goal-form";
 import { GoalRow } from "@/components/goals/goal-row";
+import { useRepoQuery } from "@/lib/db/use-repo";
 import { getGoalsWithProgress } from "@/lib/queries";
 
-export const dynamic = "force-dynamic";
+export default function GoalsPage() {
+  const { data: goals, loading } = useRepoQuery(
+    () => getGoalsWithProgress(),
+    []
+  );
+  if (loading || !goals) return <PageLoading />;
 
-export default async function GoalsPage() {
-  const goals = await getGoalsWithProgress();
   const active = goals.filter((g) => g.active);
   const paused = goals.filter((g) => !g.active);
   const completed = active.filter((g) => g.progress >= 100).length;

@@ -1,9 +1,15 @@
-"use server";
+"use client";
 
-import { revalidatePath } from "next/cache";
-
-import { prisma } from "@/lib/prisma";
+import { cuid, db } from "@/lib/db";
 import { getCurrentUserId } from "@/lib/auth";
+import { invalidateAll } from "@/lib/db/use-repo";
+
+const EMPTY_DOC = { type: "doc", content: [{ type: "paragraph" }] };
+
+async function assertSubjectOwnership(subjectId: string, userId: string) {
+  const subject = await db().subjects.get(subjectId);
+  return subject?.userId === userId;
+}
 
 export type CreateTopicInput = {
   subjectId: string;
@@ -11,54 +17,41 @@ export type CreateTopicInput = {
   parentId?: string | null;
 };
 
-async function assertSubjectOwnership(
-  subjectId: string,
-  userId: string
-): Promise<boolean> {
-  const owned = await prisma.subject.findFirst({
-    where: { id: subjectId, userId },
-    select: { id: true },
-  });
-  return owned !== null;
-}
-
 export async function createTopic(input: CreateTopicInput) {
   const title = input.title.trim();
   if (!title) return { ok: false as const, error: "Título obrigatório." };
   if (title.length > 120)
     return { ok: false as const, error: "Título muito longo." };
 
-  const userId = await getCurrentUserId();
-
-  if (!(await assertSubjectOwnership(input.subjectId, userId))) {
+  const userId = getCurrentUserId();
+  if (!(await assertSubjectOwnership(input.subjectId, userId)))
     return { ok: false as const, error: "Matéria não encontrada." };
-  }
 
   if (input.parentId) {
-    const parent = await prisma.topic.findFirst({
-      where: { id: input.parentId, subjectId: input.subjectId },
-      select: { id: true },
-    });
-    if (!parent)
+    const parent = await db().topics.get(input.parentId);
+    if (!parent || parent.subjectId !== input.subjectId)
       return { ok: false as const, error: "Tópico pai não encontrado." };
   }
 
-  const order = await prisma.topic.count({
-    where: { subjectId: input.subjectId, parentId: input.parentId ?? null },
+  const siblingCount = await db()
+    .topics.where({ subjectId: input.subjectId, parentId: input.parentId ?? null })
+    .count();
+
+  const now = Date.now();
+  const id = cuid();
+  await db().topics.add({
+    id,
+    subjectId: input.subjectId,
+    parentId: input.parentId ?? null,
+    title,
+    content: EMPTY_DOC,
+    order: siblingCount,
+    createdAt: now,
+    updatedAt: now,
   });
 
-  await prisma.topic.create({
-    data: {
-      subjectId: input.subjectId,
-      parentId: input.parentId ?? null,
-      title,
-      order,
-    },
-  });
-
-  revalidatePath(`/subjects/${input.subjectId}`);
-  revalidatePath("/subjects");
-  return { ok: true as const };
+  invalidateAll();
+  return { ok: true as const, id };
 }
 
 export async function renameTopic(topicId: string, title: string) {
@@ -67,60 +60,48 @@ export async function renameTopic(topicId: string, title: string) {
   if (next.length > 120)
     return { ok: false as const, error: "Título muito longo." };
 
-  const userId = await getCurrentUserId();
-
-  const topic = await prisma.topic.findFirst({
-    where: { id: topicId, subject: { userId } },
-    select: { id: true, subjectId: true },
-  });
+  const userId = getCurrentUserId();
+  const topic = await db().topics.get(topicId);
   if (!topic) return { ok: false as const, error: "Tópico não encontrado." };
+  if (!(await assertSubjectOwnership(topic.subjectId, userId)))
+    return { ok: false as const, error: "Tópico não encontrado." };
 
-  await prisma.topic.update({
-    where: { id: topic.id },
-    data: { title: next },
-  });
-
-  revalidatePath(`/subjects/${topic.subjectId}`);
+  await db().topics.update(topicId, { title: next, updatedAt: Date.now() });
+  invalidateAll();
   return { ok: true as const };
 }
 
 export async function updateTopicContent(topicId: string, content: unknown) {
-  const serialized = JSON.stringify(content);
-  if (serialized.length > 500_000)
-    return {
-      ok: false as const,
-      error: "Conteúdo muito grande (máx. 500KB).",
-    };
-
-  const userId = await getCurrentUserId();
-  const topic = await prisma.topic.findFirst({
-    where: { id: topicId, subject: { userId } },
-    select: { id: true, subjectId: true },
-  });
+  const userId = getCurrentUserId();
+  const topic = await db().topics.get(topicId);
   if (!topic) return { ok: false as const, error: "Tópico não encontrado." };
+  if (!(await assertSubjectOwnership(topic.subjectId, userId)))
+    return { ok: false as const, error: "Tópico não encontrado." };
 
-  await prisma.topic.update({
-    where: { id: topic.id },
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    data: { content: content as any },
-  });
-
-  revalidatePath(`/subjects/${topic.subjectId}`);
-  revalidatePath(`/topics/${topic.id}`);
+  await db().topics.update(topicId, { content, updatedAt: Date.now() });
+  invalidateAll();
   return { ok: true as const };
 }
 
+async function descendants(topicId: string): Promise<string[]> {
+  const direct = await db().topics.where("parentId").equals(topicId).toArray();
+  const out: string[] = [];
+  for (const c of direct) {
+    out.push(c.id);
+    out.push(...(await descendants(c.id)));
+  }
+  return out;
+}
+
 export async function deleteTopic(topicId: string) {
-  const userId = await getCurrentUserId();
-  const topic = await prisma.topic.findFirst({
-    where: { id: topicId, subject: { userId } },
-    select: { id: true, subjectId: true },
-  });
+  const userId = getCurrentUserId();
+  const topic = await db().topics.get(topicId);
   if (!topic) return { ok: false as const, error: "Tópico não encontrado." };
+  if (!(await assertSubjectOwnership(topic.subjectId, userId)))
+    return { ok: false as const, error: "Tópico não encontrado." };
 
-  await prisma.topic.delete({ where: { id: topic.id } });
-
-  revalidatePath(`/subjects/${topic.subjectId}`);
-  revalidatePath("/subjects");
+  const ids = [topicId, ...(await descendants(topicId))];
+  await db().topics.bulkDelete(ids);
+  invalidateAll();
   return { ok: true as const };
 }

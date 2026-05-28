@@ -1,3 +1,6 @@
+"use client";
+
+import * as React from "react";
 import {
   Activity,
   CalendarCheck,
@@ -5,8 +8,10 @@ import {
   Focus,
   TrendingUp,
 } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 
 import { Header } from "@/components/layout/header";
+import { PageLoading } from "@/components/layout/page-loading";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { PeriodTabs } from "@/components/stats/period-tabs";
 import { SubjectChart } from "@/components/stats/subject-chart";
@@ -15,29 +20,43 @@ import { ModeChart } from "@/components/stats/mode-chart";
 import { WritingCard } from "@/components/stats/writing-card";
 import { GradesOverview } from "@/components/stats/grades-overview";
 import { formatDuration } from "@/lib/utils";
+import { useRepoQuery } from "@/lib/db/use-repo";
 import {
   getContentStatsForPeriod,
   getGradesSummary,
   getStatsForPeriod,
 } from "@/lib/queries";
 
-export const dynamic = "force-dynamic";
-
 const ALLOWED_PERIODS = new Set(["7", "30", "90", "365"]);
 
-interface StatsPageProps {
-  searchParams: Promise<{ period?: string }>;
+export default function StatsPage() {
+  return (
+    <React.Suspense fallback={<PageLoading />}>
+      <StatsPageContent />
+    </React.Suspense>
+  );
 }
 
-export default async function StatsPage({ searchParams }: StatsPageProps) {
-  const params = await searchParams;
-  const periodParam = params.period ?? "30";
+function StatsPageContent() {
+  const params = useSearchParams();
+  const periodParam = params.get("period") ?? "30";
   const period = ALLOWED_PERIODS.has(periodParam) ? periodParam : "30";
-  const [stats, contentStats, gradesSummary] = await Promise.all([
-    getStatsForPeriod(parseInt(period, 10)),
-    getContentStatsForPeriod(parseInt(period, 10)),
-    getGradesSummary(),
-  ]);
+  const n = parseInt(period, 10);
+
+  const statsQ = useRepoQuery(() => getStatsForPeriod(n), [n]);
+  const contentQ = useRepoQuery(() => getContentStatsForPeriod(n), [n]);
+  const gradesQ = useRepoQuery(() => getGradesSummary(), []);
+
+  if (
+    statsQ.loading || !statsQ.data ||
+    contentQ.loading || !contentQ.data ||
+    gradesQ.loading || !gradesQ.data
+  ) {
+    return <PageLoading />;
+  }
+  const stats = statsQ.data;
+  const contentStats = contentQ.data;
+  const gradesSummary = gradesQ.data;
 
   const bestDayLabel = stats.bestDay
     ? new Date(stats.bestDay.date).toLocaleDateString("pt-BR", {

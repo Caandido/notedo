@@ -1,15 +1,22 @@
+"use client";
+
 import { BookOpen } from "lucide-react";
 
 import { Header } from "@/components/layout/header";
+import { PageLoading } from "@/components/layout/page-loading";
 import { Card, CardContent } from "@/components/ui/card";
 import { SubjectRow } from "@/components/subjects/subject-row";
 import { NewSubjectForm } from "@/components/subjects/new-subject-form";
+import { useRepoQuery } from "@/lib/db/use-repo";
 import { getSubjectsForUser } from "@/lib/queries";
 
-export const dynamic = "force-dynamic";
+export default function SubjectsPage() {
+  const { data: subjects, loading } = useRepoQuery(
+    () => getSubjectsForUser(),
+    []
+  );
+  if (loading || !subjects) return <PageLoading />;
 
-export default async function SubjectsPage() {
-  const subjects = await getSubjectsForUser();
   const totalSeconds = subjects.reduce((acc, s) => acc + s.totalSeconds, 0);
 
   return (

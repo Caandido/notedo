@@ -1,562 +1,72 @@
-import { prisma } from "@/lib/prisma";
+"use client";
+
+import { db } from "@/lib/db";
 import { getCurrentUserId } from "@/lib/auth";
+import type {
+  CalendarEventRow,
+  GoalRow,
+  GradeRow,
+  ReviewRow,
+  StudySessionRow,
+  TopicRow,
+} from "@/lib/db/schema";
 
 function startOfDay(d: Date = new Date()): Date {
   const x = new Date(d);
   x.setHours(0, 0, 0, 0);
   return x;
 }
-
 function daysAgo(n: number): Date {
   const d = startOfDay();
   d.setDate(d.getDate() - n);
   return d;
 }
-
-export async function getDashboardData() {
-  const userId = await getCurrentUserId();
-
-  const today = startOfDay();
-  const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
-  const weekStart = daysAgo(6);
-  const heatmapStart = daysAgo(89);
-  const now = new Date();
-
-  const [
-    subjects,
-    goals,
-    todaySessions,
-    weekSessions,
-    recentSessions,
-    heatmapSessions,
-    reviewsToday,
-    flashcardsDue,
-  ] = await Promise.all([
-    prisma.subject.findMany({
-      where: { userId, archived: false },
-      orderBy: { updatedAt: "desc" },
-      include: {
-        sessions: { select: { durationSeconds: true } },
-      },
-      take: 6,
-    }),
-    prisma.goal.findMany({
-      where: { userId, active: true },
-      orderBy: { createdAt: "asc" },
-    }),
-    prisma.studySession.findMany({
-      where: { userId, startedAt: { gte: today } },
-      select: { durationSeconds: true, focusScore: true },
-    }),
-    prisma.studySession.findMany({
-      where: { userId, startedAt: { gte: weekStart } },
-      select: { durationSeconds: true, startedAt: true },
-    }),
-    prisma.studySession.findMany({
-      where: { userId },
-      orderBy: { startedAt: "desc" },
-      take: 6,
-      include: {
-        subject: { select: { name: true, color: true } },
-      },
-    }),
-    prisma.studySession.findMany({
-      where: { userId, startedAt: { gte: heatmapStart } },
-      select: { durationSeconds: true, startedAt: true },
-    }),
-    prisma.review.count({
-      where: {
-        userId,
-        status: "PENDING",
-        scheduledAt: { lt: tomorrow },
-      },
-    }),
-    prisma.flashcard.count({
-      where: { userId, nextReview: { lte: now } },
-    }),
-  ]);
-
-  const subjectsView = subjects.map((s) => ({
-    id: s.id,
-    name: s.name,
-    color: s.color,
-    progress: s.progress,
-    totalSeconds: s.sessions.reduce((acc, x) => acc + x.durationSeconds, 0),
-  }));
-
-  const todaySeconds = todaySessions.reduce(
-    (acc, s) => acc + s.durationSeconds,
-    0
-  );
-  const focusScores = todaySessions
-    .map((s) => s.focusScore)
-    .filter((x): x is number => x != null);
-  const focusAvg =
-    focusScores.length > 0
-      ? Math.round(focusScores.reduce((a, b) => a + b, 0) / focusScores.length)
-      : 0;
-
-  const weekSeconds = weekSessions.reduce(
-    (acc, s) => acc + s.durationSeconds,
-    0
-  );
-
-  const dayLabels = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
-  const last7 = Array.from({ length: 7 }, (_, i) => {
-    const d = daysAgo(6 - i);
-    const seconds = weekSessions
-      .filter((s) => {
-        const sd = new Date(s.startedAt);
-        return (
-          sd.getFullYear() === d.getFullYear() &&
-          sd.getMonth() === d.getMonth() &&
-          sd.getDate() === d.getDate()
-        );
-      })
-      .reduce((acc, s) => acc + s.durationSeconds, 0);
-    return {
-      day: dayLabels[d.getDay()],
-      hours: +(seconds / 3600).toFixed(1),
-    };
-  });
-
-  const heatmapMap = new Map<string, number>();
-  heatmapSessions.forEach((s) => {
-    const key = new Date(s.startedAt).toISOString().slice(0, 10);
-    heatmapMap.set(key, (heatmapMap.get(key) ?? 0) + s.durationSeconds);
-  });
-  const heatmap = Array.from({ length: 90 }, (_, i) => {
-    const d = daysAgo(89 - i);
-    const key = d.toISOString().slice(0, 10);
-    return { date: key, seconds: heatmapMap.get(key) ?? 0 };
-  });
-
-  const streak = computeStreak(heatmap);
-
-  const sessionsView = recentSessions.map((s) => ({
-    id: s.id,
-    subjectId: s.subjectId ?? "—",
-    subjectName: s.subject?.name ?? "Sem matéria",
-    subjectColor: s.subject?.color ?? "#71717a",
-    startedAt: s.startedAt,
-    endedAt: s.endedAt,
-    durationSeconds: s.durationSeconds,
-    mode: s.mode.toLowerCase() as "pomodoro" | "free" | "reverse" | "custom",
-  }));
-
-  const goalsView = goals.map((g) => {
-    let current = 0;
-    if (g.type === "DAILY") {
-      if (g.metric === "HOURS") current = +(todaySeconds / 3600).toFixed(2);
-      else if (g.metric === "SESSIONS") current = todaySessions.length;
-    } else if (g.type === "WEEKLY") {
-      if (g.metric === "HOURS") current = +(weekSeconds / 3600).toFixed(2);
-      else if (g.metric === "SESSIONS") current = weekSessions.length;
-    }
-    return {
-      id: g.id,
-      label: g.label,
-      target: g.target,
-      current,
-      type: g.type.toLowerCase() as "daily" | "weekly" | "monthly",
-      metric: g.metric.toLowerCase() as
-        | "hours"
-        | "tasks"
-        | "sessions"
-        | "reviews",
-    };
-  });
-
-  return {
-    today: {
-      studiedSeconds: todaySeconds,
-      sessions: todaySessions.length,
-      focusPercentage: focusAvg,
-      streak,
-    },
-    week: {
-      studiedSeconds: weekSeconds,
-    },
-    reviews: {
-      today: reviewsToday,
-      flashcardsDue,
-    },
-    subjects: subjectsView,
-    goals: goalsView,
-    sessions: sessionsView,
-    weekly: last7,
-    heatmap,
-  };
+function dayKey(d: Date): string {
+  const y = d.getFullYear();
+  const m = (d.getMonth() + 1).toString().padStart(2, "0");
+  const day = d.getDate().toString().padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
-function computeStreak(heatmap: { date: string; seconds: number }[]): number {
-  let streak = 0;
-  for (let i = heatmap.length - 1; i >= 0; i--) {
-    if (heatmap[i].seconds > 0) streak++;
-    else break;
-  }
-  return streak;
+function hasTopicContent(content: unknown): boolean {
+  if (!content || typeof content !== "object") return false;
+  const c = content as { content?: Array<{ content?: unknown[] }> };
+  if (!Array.isArray(c.content) || c.content.length === 0) return false;
+  return c.content.some((n) => Array.isArray(n.content) && n.content.length > 0);
 }
 
-export type DashboardData = Awaited<ReturnType<typeof getDashboardData>>;
+async function userSubjects(userId: string) {
+  return db().subjects.where("userId").equals(userId).toArray();
+}
+async function userSessions(userId: string) {
+  return db().sessions.where("userId").equals(userId).toArray();
+}
+
+// ─── Subjects ──────────────────────────────────────────────────────────────
 
 export async function getSubjectsForUser() {
-  const userId = await getCurrentUserId();
-  const subjects = await prisma.subject.findMany({
-    where: { userId, archived: false },
-    orderBy: { updatedAt: "desc" },
-    include: {
-      sessions: { select: { durationSeconds: true } },
-    },
-  });
-  return subjects.map((s) => ({
-    id: s.id,
-    name: s.name,
-    color: s.color,
-    priority: s.priority.toLowerCase() as "low" | "medium" | "high",
-    progress: s.progress,
-    tags: s.tags,
-    totalSeconds: s.sessions.reduce((acc, x) => acc + x.durationSeconds, 0),
-    sessionCount: s.sessions.length,
-  }));
-}
+  const userId = getCurrentUserId();
+  const subjects = (await userSubjects(userId)).filter((s) => !s.archived);
+  subjects.sort((a, b) => b.updatedAt - a.updatedAt);
 
-export type SubjectView = Awaited<ReturnType<typeof getSubjectsForUser>>[number];
-
-export async function getGoalsWithProgress() {
-  const userId = await getCurrentUserId();
-
-  const today = startOfDay();
-  const weekStart = daysAgo(6);
-  const monthStart = (() => {
-    const d = new Date();
-    d.setDate(1);
-    d.setHours(0, 0, 0, 0);
-    return d;
-  })();
-
-  const [goals, todaySessions, weekSessions, monthSessions] = await Promise.all(
-    [
-      prisma.goal.findMany({
-        where: { userId },
-        orderBy: [{ active: "desc" }, { createdAt: "asc" }],
-      }),
-      prisma.studySession.findMany({
-        where: { userId, startedAt: { gte: today } },
-        select: { durationSeconds: true },
-      }),
-      prisma.studySession.findMany({
-        where: { userId, startedAt: { gte: weekStart } },
-        select: { durationSeconds: true },
-      }),
-      prisma.studySession.findMany({
-        where: { userId, startedAt: { gte: monthStart } },
-        select: { durationSeconds: true },
-      }),
-    ]
-  );
-
-  const buckets = {
-    daily: {
-      hours: todaySessions.reduce((a, s) => a + s.durationSeconds, 0) / 3600,
-      sessions: todaySessions.length,
-      tasks: 0,
-      reviews: 0,
-    },
-    weekly: {
-      hours: weekSessions.reduce((a, s) => a + s.durationSeconds, 0) / 3600,
-      sessions: weekSessions.length,
-      tasks: 0,
-      reviews: 0,
-    },
-    monthly: {
-      hours: monthSessions.reduce((a, s) => a + s.durationSeconds, 0) / 3600,
-      sessions: monthSessions.length,
-      tasks: 0,
-      reviews: 0,
-    },
-  } as const;
-
-  return goals.map((g) => {
-    const type = g.type.toLowerCase() as "daily" | "weekly" | "monthly";
-    const metric = g.metric.toLowerCase() as
-      | "hours"
-      | "tasks"
-      | "sessions"
-      | "reviews";
-    const current = +buckets[type][metric].toFixed(2);
+  const allSessions = await userSessions(userId);
+  return subjects.map((s) => {
+    const sessions = allSessions.filter((x) => x.subjectId === s.id);
     return {
-      id: g.id,
-      label: g.label,
-      type,
-      metric,
-      target: g.target,
-      current,
-      active: g.active,
-      progress: Math.min(100, (current / g.target) * 100),
-    };
-  });
-}
-
-export type GoalView = Awaited<ReturnType<typeof getGoalsWithProgress>>[number];
-
-export async function getReviewsForUser() {
-  const userId = await getCurrentUserId();
-
-  const today = startOfDay();
-  const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
-
-  const reviews = await prisma.review.findMany({
-    where: { userId, status: "PENDING" },
-    orderBy: { scheduledAt: "asc" },
-    include: {
-      subject: { select: { name: true, color: true } },
-    },
-    take: 100,
-  });
-
-  const view = reviews.map((r) => ({
-    id: r.id,
-    title: r.title,
-    subjectName: r.subject?.name ?? null,
-    subjectColor: r.subject?.color ?? null,
-    scheduledAt: r.scheduledAt,
-    interval: r.interval,
-  }));
-
-  const overdue = view.filter((r) => r.scheduledAt < today);
-  const todayList = view.filter(
-    (r) => r.scheduledAt >= today && r.scheduledAt < tomorrow
-  );
-  const upcoming = view.filter((r) => r.scheduledAt >= tomorrow);
-
-  return { overdue, today: todayList, upcoming };
-}
-
-export type ReviewsView = Awaited<ReturnType<typeof getReviewsForUser>>;
-
-export async function getFlashcardDecks() {
-  const userId = await getCurrentUserId();
-  const now = new Date();
-
-  const cards = await prisma.flashcard.findMany({
-    where: { userId },
-    select: { deck: true, nextReview: true },
-  });
-
-  const map = new Map<string, { total: number; due: number }>();
-  for (const c of cards) {
-    const deck = c.deck ?? "Sem deck";
-    const entry = map.get(deck) ?? { total: 0, due: 0 };
-    entry.total += 1;
-    if (c.nextReview <= now) entry.due += 1;
-    map.set(deck, entry);
-  }
-
-  return Array.from(map.entries())
-    .map(([deck, v]) => ({ deck, total: v.total, due: v.due }))
-    .sort((a, b) => b.due - a.due || a.deck.localeCompare(b.deck));
-}
-
-export type DeckView = Awaited<ReturnType<typeof getFlashcardDecks>>[number];
-
-export async function getDueFlashcards(deckName?: string) {
-  const userId = await getCurrentUserId();
-  const now = new Date();
-
-  const cards = await prisma.flashcard.findMany({
-    where: {
-      userId,
-      nextReview: { lte: now },
-      ...(deckName ? { deck: deckName } : {}),
-    },
-    take: 50,
-  });
-
-  for (let i = cards.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [cards[i], cards[j]] = [cards[j], cards[i]];
-  }
-
-  return cards.map((c) => ({
-    id: c.id,
-    front: c.front,
-    back: c.back,
-    deck: c.deck,
-    ease: c.ease,
-    interval: c.interval,
-  }));
-}
-
-export type DueCard = Awaited<ReturnType<typeof getDueFlashcards>>[number];
-
-export async function getStatsForPeriod(periodDays: number) {
-  const userId = await getCurrentUserId();
-
-  const since = daysAgo(periodDays - 1);
-
-  const sessions = await prisma.studySession.findMany({
-    where: { userId, startedAt: { gte: since } },
-    select: {
-      durationSeconds: true,
-      startedAt: true,
-      focusScore: true,
-      mode: true,
-      subjectId: true,
-      subject: { select: { name: true, color: true } },
-    },
-  });
-
-  const totalSeconds = sessions.reduce((a, s) => a + s.durationSeconds, 0);
-  const focusScores = sessions
-    .map((s) => s.focusScore)
-    .filter((x): x is number => x != null);
-  const focusAvg =
-    focusScores.length > 0
-      ? Math.round(focusScores.reduce((a, b) => a + b, 0) / focusScores.length)
-      : 0;
-
-  const daySet = new Set(
-    sessions.map((s) => new Date(s.startedAt).toISOString().slice(0, 10))
-  );
-
-  const avgPerActiveDay =
-    daySet.size > 0 ? totalSeconds / 3600 / daySet.size : 0;
-
-  const dayHoursMap = new Map<string, number>();
-  sessions.forEach((s) => {
-    const key = new Date(s.startedAt).toISOString().slice(0, 10);
-    dayHoursMap.set(key, (dayHoursMap.get(key) ?? 0) + s.durationSeconds);
-  });
-
-  let bestDay: { date: string; hours: number } | null = null;
-  for (const [date, secs] of dayHoursMap) {
-    const hours = secs / 3600;
-    if (!bestDay || hours > bestDay.hours) bestDay = { date, hours };
-  }
-
-  const weekdayLabels = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
-  const byWeekday = weekdayLabels.map((label) => ({
-    label,
-    hours: 0,
-  }));
-  sessions.forEach((s) => {
-    const idx = new Date(s.startedAt).getDay();
-    byWeekday[idx].hours += s.durationSeconds / 3600;
-  });
-  byWeekday.forEach((d) => (d.hours = +d.hours.toFixed(2)));
-
-  const subjectMap = new Map<
-    string,
-    { id: string; name: string; color: string; seconds: number }
-  >();
-  sessions.forEach((s) => {
-    const id = s.subjectId ?? "_none";
-    const name = s.subject?.name ?? "Sem matéria";
-    const color = s.subject?.color ?? "#71717a";
-    const existing = subjectMap.get(id);
-    if (existing) existing.seconds += s.durationSeconds;
-    else subjectMap.set(id, { id, name, color, seconds: s.durationSeconds });
-  });
-  const bySubject = Array.from(subjectMap.values())
-    .map((s) => ({
       id: s.id,
       name: s.name,
       color: s.color,
-      hours: +(s.seconds / 3600).toFixed(2),
-    }))
-    .sort((a, b) => b.hours - a.hours);
-
-  const modeLabels: Record<string, string> = {
-    POMODORO: "Pomodoro",
-    FREE: "Livre",
-    REVERSE: "Reverso",
-    CUSTOM: "Custom",
-  };
-  const modeColors: Record<string, string> = {
-    POMODORO: "#a78bfa",
-    FREE: "#60a5fa",
-    REVERSE: "#fbbf24",
-    CUSTOM: "#34d399",
-  };
-  const modeMap = new Map<string, number>();
-  sessions.forEach((s) => {
-    modeMap.set(s.mode, (modeMap.get(s.mode) ?? 0) + s.durationSeconds);
-  });
-  const byMode = Array.from(modeMap.entries())
-    .map(([mode, secs]) => ({
-      mode,
-      label: modeLabels[mode] ?? mode,
-      color: modeColors[mode] ?? "#94a3b8",
-      hours: +(secs / 3600).toFixed(2),
-      sessions: sessions.filter((s) => s.mode === mode).length,
-    }))
-    .sort((a, b) => b.hours - a.hours);
-
-  return {
-    period: periodDays,
-    totalSeconds,
-    sessionCount: sessions.length,
-    activeDays: daySet.size,
-    focusAvg,
-    avgPerActiveDay: +avgPerActiveDay.toFixed(2),
-    bestDay,
-    byWeekday,
-    bySubject,
-    byMode,
-  };
-}
-
-export type StatsView = Awaited<ReturnType<typeof getStatsForPeriod>>;
-
-export async function getContentStatsForPeriod(periodDays: number) {
-  const userId = await getCurrentUserId();
-  const since = daysAgo(periodDays - 1);
-
-  const [allTopics, topicsTouched] = await Promise.all([
-    prisma.topic.findMany({
-      where: { subject: { userId } },
-      select: { id: true, content: true, updatedAt: true },
-    }),
-    prisma.topic.count({
-      where: { subject: { userId }, updatedAt: { gte: since } },
-    }),
-  ]);
-
-  const topicsWithContent = allTopics.filter((t) =>
-    hasTopicContent(t.content)
-  ).length;
-
-  const dayLabels = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
-  const writingByDay = Array.from({ length: periodDays }, (_, i) => {
-    const d = daysAgo(periodDays - 1 - i);
-    return {
-      date: d.toISOString().slice(0, 10),
-      label: dayLabels[d.getDay()],
-      edits: 0,
+      priority: s.priority.toLowerCase() as "low" | "medium" | "high",
+      progress: s.progress,
+      tags: s.tags,
+      totalSeconds: sessions.reduce((a, x) => a + x.durationSeconds, 0),
+      sessionCount: sessions.length,
     };
   });
-
-  const byDate = new Map(writingByDay.map((d) => [d.date, d]));
-  const sinceMs = since.getTime();
-  for (const t of allTopics) {
-    if (t.updatedAt.getTime() < sinceMs) continue;
-    const key = t.updatedAt.toISOString().slice(0, 10);
-    const slot = byDate.get(key);
-    if (slot) slot.edits += 1;
-  }
-
-  return {
-    totalTopics: allTopics.length,
-    topicsWithContent,
-    topicsTouched,
-    writingByDay,
-  };
 }
+export type SubjectView = Awaited<ReturnType<typeof getSubjectsForUser>>[number];
 
-export type ContentStats = Awaited<
-  ReturnType<typeof getContentStatsForPeriod>
->;
+// ─── Topic tree ────────────────────────────────────────────────────────────
 
 export type TopicNode = {
   id: string;
@@ -568,68 +78,53 @@ export type TopicNode = {
   children: TopicNode[];
 };
 
-function hasTopicContent(content: unknown): boolean {
-  if (!content || typeof content !== "object") return false;
-  const c = content as { content?: Array<{ content?: unknown[] }> };
-  if (!Array.isArray(c.content) || c.content.length === 0) return false;
-  return c.content.some((n) => Array.isArray(n.content) && n.content.length > 0);
-}
-
-export async function getSubjectDetail(subjectId: string) {
-  const userId = await getCurrentUserId();
-
-  const subject = await prisma.subject.findFirst({
-    where: { id: subjectId, userId },
-  });
-  if (!subject) return null;
-
-  const [topics, sessions, sessionCount, totalAgg] = await Promise.all([
-    prisma.topic.findMany({
-      where: { subjectId: subject.id },
-      orderBy: [{ order: "asc" }, { createdAt: "asc" }],
-    }),
-    prisma.studySession.findMany({
-      where: { userId, subjectId: subject.id },
-      orderBy: { startedAt: "desc" },
-      take: 10,
-    }),
-    prisma.studySession.count({
-      where: { userId, subjectId: subject.id },
-    }),
-    prisma.studySession.aggregate({
-      where: { userId, subjectId: subject.id },
-      _sum: { durationSeconds: true },
-    }),
-  ]);
-
-  const byParent = new Map<string | null, typeof topics>();
+function buildTopicTree(topics: TopicRow[], rootParentId: string | null): TopicNode[] {
+  const byParent = new Map<string | null, TopicRow[]>();
   for (const t of topics) {
-    const key = t.parentId ?? null;
-    const arr = byParent.get(key) ?? [];
+    const k = t.parentId;
+    const arr = byParent.get(k) ?? [];
     arr.push(t);
-    byParent.set(key, arr);
+    byParent.set(k, arr);
   }
-
-  function buildTree(parentId: string | null): TopicNode[] {
+  for (const arr of byParent.values()) {
+    arr.sort((a, b) => a.order - b.order || a.createdAt - b.createdAt);
+  }
+  function build(parentId: string | null): TopicNode[] {
     const list = byParent.get(parentId) ?? [];
     return list.map((t) => {
-      const children = buildTree(t.id);
+      const children = build(t.id);
       const descendantCount =
-        children.length +
-        children.reduce((a, c) => a + c.descendantCount, 0);
+        children.length + children.reduce((a, c) => a + c.descendantCount, 0);
       return {
         id: t.id,
         title: t.title,
         hasContent: hasTopicContent(t.content),
         order: t.order,
-        updatedAt: t.updatedAt,
+        updatedAt: new Date(t.updatedAt),
         descendantCount,
         children,
       };
     });
   }
+  return build(rootParentId);
+}
 
-  const tree = buildTree(null);
+// ─── Subject detail ────────────────────────────────────────────────────────
+
+export async function getSubjectDetail(subjectId: string) {
+  const userId = getCurrentUserId();
+  const subject = await db().subjects.get(subjectId);
+  if (!subject || subject.userId !== userId) return null;
+
+  const [topics, allSessions] = await Promise.all([
+    db().topics.where("subjectId").equals(subjectId).toArray(),
+    db().sessions.where("subjectId").equals(subjectId).toArray(),
+  ]);
+
+  const tree = buildTopicTree(topics, null);
+  const recent = [...allSessions]
+    .sort((a, b) => b.startedAt - a.startedAt)
+    .slice(0, 10);
 
   return {
     subject: {
@@ -643,230 +138,49 @@ export async function getSubjectDetail(subjectId: string) {
     },
     topics: tree,
     topicCount: topics.length,
-    totalSeconds: totalAgg._sum.durationSeconds ?? 0,
-    sessionCount,
-    recentSessions: sessions.map((s) => ({
+    totalSeconds: allSessions.reduce((a, s) => a + s.durationSeconds, 0),
+    sessionCount: allSessions.length,
+    recentSessions: recent.map((s) => ({
       id: s.id,
       mode: s.mode.toLowerCase() as "pomodoro" | "free" | "reverse" | "custom",
-      startedAt: s.startedAt,
+      startedAt: new Date(s.startedAt),
       durationSeconds: s.durationSeconds,
-      focusScore: s.focusScore,
+      focusScore: s.focusScore ?? null,
     })),
   };
 }
-
 export type SubjectDetail = Awaited<ReturnType<typeof getSubjectDetail>>;
 
-export async function getCalendarMonth(year: number, month: number) {
-  const userId = await getCurrentUserId();
-
-  const monthStart = new Date(year, month, 1, 0, 0, 0, 0);
-  const monthEnd = new Date(year, month + 1, 1, 0, 0, 0, 0);
-
-  const [sessions, reviews, events] = await Promise.all([
-    prisma.studySession.findMany({
-      where: { userId, startedAt: { gte: monthStart, lt: monthEnd } },
-      select: {
-        id: true,
-        startedAt: true,
-        durationSeconds: true,
-        mode: true,
-        subject: { select: { name: true, color: true } },
-      },
-    }),
-    prisma.review.findMany({
-      where: {
-        userId,
-        scheduledAt: { gte: monthStart, lt: monthEnd },
-      },
-      select: {
-        id: true,
-        title: true,
-        status: true,
-        scheduledAt: true,
-        subject: { select: { name: true, color: true } },
-      },
-    }),
-    prisma.calendarEvent.findMany({
-      where: { userId, date: { gte: monthStart, lt: monthEnd } },
-      orderBy: { date: "asc" },
-      include: {
-        subject: { select: { id: true, name: true, color: true } },
-      },
-    }),
-  ]);
-
-  function dayKey(d: Date): string {
-    const y = d.getFullYear();
-    const m = (d.getMonth() + 1).toString().padStart(2, "0");
-    const day = d.getDate().toString().padStart(2, "0");
-    return `${y}-${m}-${day}`;
-  }
-
-  const sessionsView = sessions.map((s) => ({
-    id: s.id,
-    startedAt: s.startedAt,
-    durationSeconds: s.durationSeconds,
-    mode: s.mode.toLowerCase() as "pomodoro" | "free" | "reverse" | "custom",
-    subjectName: s.subject?.name ?? null,
-    subjectColor: s.subject?.color ?? null,
-  }));
-
-  const reviewsView = reviews.map((r) => ({
-    id: r.id,
-    title: r.title,
-    status: r.status.toLowerCase() as "pending" | "completed" | "skipped",
-    scheduledAt: r.scheduledAt,
-    subjectName: r.subject?.name ?? null,
-    subjectColor: r.subject?.color ?? null,
-  }));
-
-  const eventsView = events.map((e) => ({
-    id: e.id,
-    title: e.title,
-    type: e.type.toLowerCase() as "exam" | "task" | "class" | "custom",
-    date: e.date,
-    done: e.done,
-    notes: e.notes,
-    subjectId: e.subject?.id ?? null,
-    subjectName: e.subject?.name ?? null,
-    subjectColor: e.subject?.color ?? null,
-  }));
-
-  type DayCell = {
-    key: string;
-    date: Date;
-    seconds: number;
-    sessions: typeof sessionsView;
-    reviews: typeof reviewsView;
-    events: typeof eventsView;
-  };
-
-  const days: DayCell[] = [];
-  const cursor = new Date(monthStart);
-  while (cursor < monthEnd) {
-    const key = dayKey(cursor);
-    days.push({
-      key,
-      date: new Date(cursor),
-      seconds: 0,
-      sessions: [],
-      reviews: [],
-      events: [],
-    });
-    cursor.setDate(cursor.getDate() + 1);
-  }
-
-  const byKey = new Map(days.map((d) => [d.key, d]));
-
-  sessionsView.forEach((s) => {
-    const cell = byKey.get(dayKey(new Date(s.startedAt)));
-    if (cell) {
-      cell.seconds += s.durationSeconds;
-      cell.sessions.push(s);
-    }
-  });
-
-  reviewsView.forEach((r) => {
-    const cell = byKey.get(dayKey(new Date(r.scheduledAt)));
-    if (cell) cell.reviews.push(r);
-  });
-
-  eventsView.forEach((e) => {
-    const cell = byKey.get(dayKey(new Date(e.date)));
-    if (cell) cell.events.push(e);
-  });
-
-  const totalSeconds = days.reduce((a, d) => a + d.seconds, 0);
-  const activeDays = days.filter((d) => d.seconds > 0).length;
-
-  return {
-    year,
-    month,
-    monthStart,
-    days,
-    totalSeconds,
-    activeDays,
-    sessionCount: sessions.length,
-    reviewCount: reviews.length,
-    eventCount: events.length,
-  };
-}
-
-export type CalendarMonth = Awaited<ReturnType<typeof getCalendarMonth>>;
+// ─── Topic detail ──────────────────────────────────────────────────────────
 
 export async function getTopicDetail(topicId: string) {
-  const userId = await getCurrentUserId();
-
-  const topic = await prisma.topic.findFirst({
-    where: { id: topicId, subject: { userId } },
-    include: {
-      subject: { select: { id: true, name: true, color: true } },
-      parent: { select: { id: true, title: true } },
-    },
-  });
+  const userId = getCurrentUserId();
+  const topic = await db().topics.get(topicId);
   if (!topic) return null;
+  const subject = await db().subjects.get(topic.subjectId);
+  if (!subject || subject.userId !== userId) return null;
 
   const ancestors: { id: string; title: string }[] = [];
-  let cursor = topic.parent;
-  while (cursor) {
-    ancestors.unshift({ id: cursor.id, title: cursor.title });
-    const next = await prisma.topic.findFirst({
-      where: { id: cursor.id },
-      select: { parent: { select: { id: true, title: true } } },
-    });
-    cursor = next?.parent ?? null;
+  let cursor: TopicRow | undefined = topic;
+  while (cursor && cursor.parentId) {
+    const parent: TopicRow | undefined = await db().topics.get(cursor.parentId);
+    if (!parent) break;
+    ancestors.unshift({ id: parent.id, title: parent.title });
+    cursor = parent;
   }
 
-  const [childrenRaw, recentSessions, sessionCount, totalAgg, descendantIds] =
-    await Promise.all([
-      prisma.topic.findMany({
-        where: { subjectId: topic.subjectId },
-        orderBy: [{ order: "asc" }, { createdAt: "asc" }],
-      }),
-      prisma.studySession.findMany({
-        where: { userId, topicId: topic.id },
-        orderBy: { startedAt: "desc" },
-        take: 10,
-      }),
-      prisma.studySession.count({
-        where: { userId, topicId: topic.id },
-      }),
-      prisma.studySession.aggregate({
-        where: { userId, topicId: topic.id },
-        _sum: { durationSeconds: true },
-      }),
-      collectDescendantIds(topic.id),
-    ]);
+  const [allTopicsOfSubject, sessions] = await Promise.all([
+    db().topics.where("subjectId").equals(topic.subjectId).toArray(),
+    db().sessions.where("topicId").equals(topic.id).toArray(),
+  ]);
 
-  const byParent = new Map<string | null, typeof childrenRaw>();
-  for (const t of childrenRaw) {
-    const key = t.parentId ?? null;
-    const arr = byParent.get(key) ?? [];
-    arr.push(t);
-    byParent.set(key, arr);
-  }
+  const children = buildTopicTree(allTopicsOfSubject, topic.id);
+  const descendantCount =
+    children.length + children.reduce((a, c) => a + c.descendantCount, 0);
 
-  function buildTree(parentId: string | null): TopicNode[] {
-    const list = byParent.get(parentId) ?? [];
-    return list.map((t) => {
-      const children = buildTree(t.id);
-      const descendantCount =
-        children.length +
-        children.reduce((a, c) => a + c.descendantCount, 0);
-      return {
-        id: t.id,
-        title: t.title,
-        hasContent: hasTopicContent(t.content),
-        order: t.order,
-        updatedAt: t.updatedAt,
-        descendantCount,
-        children,
-      };
-    });
-  }
-
-  const childrenTree = buildTree(topic.id);
+  const recent = [...sessions]
+    .sort((a, b) => b.startedAt - a.startedAt)
+    .slice(0, 10);
 
   return {
     topic: {
@@ -875,210 +189,671 @@ export async function getTopicDetail(topicId: string) {
       content: topic.content,
       order: topic.order,
     },
-    subject: topic.subject,
+    subject: { id: subject.id, name: subject.name, color: subject.color },
     ancestors,
-    children: childrenTree,
-    descendantCount: descendantIds.length,
-    totalSeconds: totalAgg._sum.durationSeconds ?? 0,
-    sessionCount,
-    recentSessions: recentSessions.map((s) => ({
+    children,
+    descendantCount,
+    totalSeconds: sessions.reduce((a, s) => a + s.durationSeconds, 0),
+    sessionCount: sessions.length,
+    recentSessions: recent.map((s) => ({
       id: s.id,
       mode: s.mode.toLowerCase() as "pomodoro" | "free" | "reverse" | "custom",
-      startedAt: s.startedAt,
+      startedAt: new Date(s.startedAt),
       durationSeconds: s.durationSeconds,
     })),
   };
 }
-
-async function collectDescendantIds(rootId: string): Promise<string[]> {
-  const out: string[] = [];
-  const queue: string[] = [rootId];
-  while (queue.length > 0) {
-    const parentId = queue.shift()!;
-    const children = await prisma.topic.findMany({
-      where: { parentId },
-      select: { id: true },
-    });
-    for (const c of children) {
-      out.push(c.id);
-      queue.push(c.id);
-    }
-  }
-  return out;
-}
-
 export type TopicDetail = Awaited<ReturnType<typeof getTopicDetail>>;
 
-export async function getEventsForRange(start: Date, end: Date) {
-  const userId = await getCurrentUserId();
-  const events = await prisma.calendarEvent.findMany({
-    where: { userId, date: { gte: start, lt: end } },
-    orderBy: { date: "asc" },
-    include: {
-      subject: { select: { id: true, name: true, color: true } },
-    },
+// ─── Goals ─────────────────────────────────────────────────────────────────
+
+export async function getGoalsWithProgress() {
+  const userId = getCurrentUserId();
+  const [goals, sessions] = await Promise.all([
+    db().goals.where("userId").equals(userId).toArray(),
+    userSessions(userId),
+  ]);
+  goals.sort((a, b) => (a.active === b.active ? a.createdAt - b.createdAt : a.active ? -1 : 1));
+
+  const today = startOfDay().getTime();
+  const weekStart = daysAgo(6).getTime();
+  const monthStart = (() => {
+    const d = new Date();
+    d.setDate(1);
+    d.setHours(0, 0, 0, 0);
+    return d.getTime();
+  })();
+
+  const todaySess = sessions.filter((s) => s.startedAt >= today);
+  const weekSess = sessions.filter((s) => s.startedAt >= weekStart);
+  const monthSess = sessions.filter((s) => s.startedAt >= monthStart);
+
+  function bucket(g: GoalRow): number {
+    const list =
+      g.type === "DAILY" ? todaySess : g.type === "WEEKLY" ? weekSess : monthSess;
+    if (g.metric === "HOURS") return list.reduce((a, s) => a + s.durationSeconds, 0) / 3600;
+    if (g.metric === "SESSIONS") return list.length;
+    return 0;
+  }
+
+  return goals.map((g) => {
+    const current = +bucket(g).toFixed(2);
+    return {
+      id: g.id,
+      label: g.label,
+      type: g.type.toLowerCase() as "daily" | "weekly" | "monthly",
+      metric: g.metric.toLowerCase() as
+        | "hours"
+        | "tasks"
+        | "sessions"
+        | "reviews",
+      target: g.target,
+      current,
+      active: g.active,
+      progress: Math.min(100, (current / g.target) * 100),
+    };
   });
-  return events.map((e) => ({
+}
+export type GoalView = Awaited<ReturnType<typeof getGoalsWithProgress>>[number];
+
+// ─── Reviews ──────────────────────────────────────────────────────────────
+
+export async function getReviewsForUser() {
+  const userId = getCurrentUserId();
+  const [reviews, subjects] = await Promise.all([
+    db().reviews.where("userId").equals(userId).toArray(),
+    userSubjects(userId),
+  ]);
+  const pending = reviews.filter((r) => r.status === "PENDING");
+  pending.sort((a, b) => a.scheduledAt - b.scheduledAt);
+
+  const subjectMap = new Map(subjects.map((s) => [s.id, s]));
+  const today = startOfDay().getTime();
+  const tomorrow = today + 24 * 60 * 60 * 1000;
+
+  function toView(r: ReviewRow) {
+    const subj = r.subjectId ? subjectMap.get(r.subjectId) : undefined;
+    return {
+      id: r.id,
+      title: r.title,
+      subjectName: subj?.name ?? null,
+      subjectColor: subj?.color ?? null,
+      scheduledAt: new Date(r.scheduledAt),
+      interval: r.interval,
+    };
+  }
+  return {
+    overdue: pending.filter((r) => r.scheduledAt < today).map(toView),
+    today: pending
+      .filter((r) => r.scheduledAt >= today && r.scheduledAt < tomorrow)
+      .map(toView),
+    upcoming: pending.filter((r) => r.scheduledAt >= tomorrow).map(toView),
+  };
+}
+export type ReviewsView = Awaited<ReturnType<typeof getReviewsForUser>>;
+
+// ─── Flashcards ───────────────────────────────────────────────────────────
+
+export async function getFlashcardDecks() {
+  const userId = getCurrentUserId();
+  const cards = await db().flashcards.where("userId").equals(userId).toArray();
+  const now = Date.now();
+  const map = new Map<string, { total: number; due: number }>();
+  for (const c of cards) {
+    const deck = c.deck ?? "Sem deck";
+    const e = map.get(deck) ?? { total: 0, due: 0 };
+    e.total += 1;
+    if (c.nextReview <= now) e.due += 1;
+    map.set(deck, e);
+  }
+  return Array.from(map.entries())
+    .map(([deck, v]) => ({ deck, total: v.total, due: v.due }))
+    .sort((a, b) => b.due - a.due || a.deck.localeCompare(b.deck));
+}
+export type DeckView = Awaited<ReturnType<typeof getFlashcardDecks>>[number];
+
+export async function getDueFlashcards(deckName?: string) {
+  const userId = getCurrentUserId();
+  const now = Date.now();
+  let cards = await db().flashcards.where("userId").equals(userId).toArray();
+  cards = cards.filter((c) => c.nextReview <= now);
+  if (deckName) cards = cards.filter((c) => c.deck === deckName);
+
+  for (let i = cards.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [cards[i], cards[j]] = [cards[j], cards[i]];
+  }
+  cards = cards.slice(0, 50);
+
+  return cards.map((c) => ({
+    id: c.id,
+    front: c.front,
+    back: c.back,
+    deck: c.deck,
+    ease: c.ease,
+    interval: c.interval,
+  }));
+}
+export type DueCard = Awaited<ReturnType<typeof getDueFlashcards>>[number];
+
+// ─── Events ───────────────────────────────────────────────────────────────
+
+function eventToView(e: CalendarEventRow, subjects: Map<string, { id: string; name: string; color: string }>) {
+  const subj = e.subjectId ? subjects.get(e.subjectId) : undefined;
+  return {
     id: e.id,
     title: e.title,
     type: e.type.toLowerCase() as "exam" | "task" | "class" | "custom",
-    date: e.date,
+    date: new Date(e.date),
     done: e.done,
     notes: e.notes,
-    subjectId: e.subject?.id ?? null,
-    subjectName: e.subject?.name ?? null,
-    subjectColor: e.subject?.color ?? null,
-  }));
+    subjectId: subj?.id ?? null,
+    subjectName: subj?.name ?? null,
+    subjectColor: subj?.color ?? null,
+  };
 }
 
+export async function getEventsForRange(start: Date, end: Date) {
+  const userId = getCurrentUserId();
+  const [events, subjects] = await Promise.all([
+    db().events.where("userId").equals(userId).toArray(),
+    userSubjects(userId),
+  ]);
+  const subjMap = new Map(
+    subjects.map((s) => [s.id, { id: s.id, name: s.name, color: s.color }])
+  );
+  return events
+    .filter((e) => e.date >= start.getTime() && e.date < end.getTime())
+    .sort((a, b) => a.date - b.date)
+    .map((e) => eventToView(e, subjMap));
+}
 export type EventView = Awaited<ReturnType<typeof getEventsForRange>>[number];
 
-type GradeRaw = {
-  id: string;
-  subjectId: string;
-  title: string;
-  type: "EXAM" | "ASSIGNMENT" | "QUIZ" | "OTHER";
-  score: number;
-  maxScore: number;
-  weight: number;
-  date: Date;
-  comments: string | null;
-  subject: { id: string; name: string; color: string };
-};
+// ─── Grades ───────────────────────────────────────────────────────────────
 
-function gradeToView(g: GradeRaw) {
+function gradeToView(g: GradeRow, subjects: Map<string, { id: string; name: string; color: string }>) {
+  const subj = subjects.get(g.subjectId);
   const percent = (g.score / g.maxScore) * 100;
   return {
     id: g.id,
     subjectId: g.subjectId,
-    subjectName: g.subject.name,
-    subjectColor: g.subject.color,
+    subjectName: subj?.name ?? "—",
+    subjectColor: subj?.color ?? "#71717a",
     title: g.title,
     type: g.type.toLowerCase() as "exam" | "assignment" | "quiz" | "other",
     score: g.score,
     maxScore: g.maxScore,
     weight: g.weight,
-    date: g.date,
+    date: new Date(g.date),
     comments: g.comments,
     percent,
   };
 }
 
-function weightedAverage(
-  grades: { score: number; maxScore: number; weight: number }[]
-) {
+function weightedAverage(grades: { score: number; maxScore: number; weight: number }[]) {
   if (grades.length === 0) return null;
-  const totalWeight = grades.reduce((a, g) => a + g.weight, 0);
-  if (totalWeight === 0) return null;
-  const weightedSum = grades.reduce(
-    (a, g) => a + (g.score / g.maxScore) * 10 * g.weight,
-    0
-  );
-  return weightedSum / totalWeight;
+  const tw = grades.reduce((a, g) => a + g.weight, 0);
+  if (tw === 0) return null;
+  return grades.reduce((a, g) => a + (g.score / g.maxScore) * 10 * g.weight, 0) / tw;
 }
 
 export async function getGradesForUser() {
-  const userId = await getCurrentUserId();
-  const grades = await prisma.grade.findMany({
-    where: { userId },
-    orderBy: { date: "desc" },
-    include: {
-      subject: { select: { id: true, name: true, color: true } },
-    },
-  });
-  return grades.map(gradeToView);
+  const userId = getCurrentUserId();
+  const [grades, subjects] = await Promise.all([
+    db().grades.where("userId").equals(userId).toArray(),
+    userSubjects(userId),
+  ]);
+  grades.sort((a, b) => b.date - a.date);
+  const subjMap = new Map(subjects.map((s) => [s.id, { id: s.id, name: s.name, color: s.color }]));
+  return grades.map((g) => gradeToView(g, subjMap));
 }
-
 export type GradeView = ReturnType<typeof gradeToView>;
 
 export async function getGradesForSubject(subjectId: string) {
-  const userId = await getCurrentUserId();
-  const grades = await prisma.grade.findMany({
-    where: { userId, subjectId },
-    orderBy: { date: "desc" },
-    include: {
-      subject: { select: { id: true, name: true, color: true } },
-    },
-  });
-  const view = grades.map(gradeToView);
-  const avg = weightedAverage(grades);
-  return { grades: view, average: avg };
+  const userId = getCurrentUserId();
+  const subject = await db().subjects.get(subjectId);
+  if (!subject || subject.userId !== userId) return { grades: [], average: null };
+  const grades = await db().grades.where("subjectId").equals(subjectId).toArray();
+  grades.sort((a, b) => b.date - a.date);
+  const subjMap = new Map([[subject.id, { id: subject.id, name: subject.name, color: subject.color }]]);
+  return {
+    grades: grades.map((g) => gradeToView(g, subjMap)),
+    average: weightedAverage(grades),
+  };
 }
 
 export async function getGradesSummary() {
-  const userId = await getCurrentUserId();
-
+  const userId = getCurrentUserId();
   const [grades, subjects] = await Promise.all([
-    prisma.grade.findMany({
-      where: { userId },
-      include: { subject: { select: { id: true, name: true, color: true } } },
-    }),
-    prisma.subject.findMany({
-      where: { userId, archived: false },
-      select: { id: true, name: true, color: true },
-      orderBy: { updatedAt: "desc" },
-    }),
+    db().grades.where("userId").equals(userId).toArray(),
+    userSubjects(userId),
   ]);
+  const subjMap = new Map(subjects.map((s) => [s.id, { id: s.id, name: s.name, color: s.color }]));
 
-  const bySubjectMap = new Map<
-    string,
-    { id: string; name: string; color: string; grades: typeof grades }
-  >();
-  for (const s of subjects) {
-    bySubjectMap.set(s.id, { ...s, grades: [] });
-  }
+  const byMap = new Map<string, GradeRow[]>();
+  for (const s of subjects.filter((s) => !s.archived)) byMap.set(s.id, []);
   for (const g of grades) {
-    const slot = bySubjectMap.get(g.subjectId);
-    if (slot) slot.grades.push(g);
+    const arr = byMap.get(g.subjectId);
+    if (arr) arr.push(g);
   }
-
-  const bySubject = Array.from(bySubjectMap.values())
-    .map((s) => ({
-      id: s.id,
-      name: s.name,
-      color: s.color,
-      count: s.grades.length,
-      average: weightedAverage(s.grades),
-    }))
+  const bySubject = Array.from(byMap.entries())
+    .map(([sid, gs]) => {
+      const s = subjMap.get(sid)!;
+      return {
+        id: s.id,
+        name: s.name,
+        color: s.color,
+        count: gs.length,
+        average: weightedAverage(gs),
+      };
+    })
     .sort((a, b) => {
       if (a.count === 0 && b.count > 0) return 1;
       if (b.count === 0 && a.count > 0) return -1;
       return (b.average ?? 0) - (a.average ?? 0);
     });
 
-  const overall = weightedAverage(grades);
-
   return {
     totalGrades: grades.length,
-    overallAverage: overall,
+    overallAverage: weightedAverage(grades),
     bySubject,
-    recent: grades
-      .sort((a, b) => b.date.getTime() - a.date.getTime())
+    recent: [...grades]
+      .sort((a, b) => b.date - a.date)
       .slice(0, 5)
-      .map(gradeToView),
+      .map((g) => gradeToView(g, subjMap)),
   };
 }
-
 export type GradesSummary = Awaited<ReturnType<typeof getGradesSummary>>;
 
+// ─── Profile ──────────────────────────────────────────────────────────────
+
 export async function getProfileSummary() {
-  const userId = await getCurrentUserId();
-
-  const [user, subjectCount, sessionCount, flashcardCount] = await Promise.all([
-    prisma.user.findUnique({
-      where: { id: userId },
-      select: { name: true, email: true },
-    }),
-    prisma.subject.count({ where: { userId, archived: false } }),
-    prisma.studySession.count({ where: { userId } }),
-    prisma.flashcard.count({ where: { userId } }),
+  const userId = getCurrentUserId();
+  const user = await db().users.get(userId);
+  const [subjects, sessions, flashcards] = await Promise.all([
+    userSubjects(userId),
+    userSessions(userId),
+    db().flashcards.where("userId").equals(userId).toArray(),
   ]);
-
   return {
-    name: user?.name ?? "Usuário",
+    name: user?.name ?? "Você",
     email: user?.email ?? "—",
-    subjectCount,
-    sessionCount,
-    flashcardCount,
+    subjectCount: subjects.filter((s) => !s.archived).length,
+    sessionCount: sessions.length,
+    flashcardCount: flashcards.length,
   };
 }
+
+// ─── Dashboard ────────────────────────────────────────────────────────────
+
+export async function getDashboardData() {
+  const userId = getCurrentUserId();
+  const today = startOfDay().getTime();
+  const tomorrow = today + 24 * 60 * 60 * 1000;
+  const weekStart = daysAgo(6).getTime();
+  const heatmapStart = daysAgo(89).getTime();
+  const now = Date.now();
+
+  const [subjects, allSessions, goals, reviews, flashcards] = await Promise.all([
+    userSubjects(userId),
+    userSessions(userId),
+    db().goals.where("userId").equals(userId).toArray(),
+    db().reviews.where("userId").equals(userId).toArray(),
+    db().flashcards.where("userId").equals(userId).toArray(),
+  ]);
+
+  const activeSubjects = subjects.filter((s) => !s.archived);
+  activeSubjects.sort((a, b) => b.updatedAt - a.updatedAt);
+
+  const todaySessions = allSessions.filter((s) => s.startedAt >= today);
+  const weekSessions = allSessions.filter((s) => s.startedAt >= weekStart);
+  const recentSessions = [...allSessions]
+    .sort((a, b) => b.startedAt - a.startedAt)
+    .slice(0, 6);
+  const heatmapSessions = allSessions.filter((s) => s.startedAt >= heatmapStart);
+
+  const subjectsView = activeSubjects.slice(0, 6).map((s) => {
+    const ss = allSessions.filter((x) => x.subjectId === s.id);
+    return {
+      id: s.id,
+      name: s.name,
+      color: s.color,
+      progress: s.progress,
+      totalSeconds: ss.reduce((a, x) => a + x.durationSeconds, 0),
+    };
+  });
+
+  const todaySeconds = todaySessions.reduce((a, s) => a + s.durationSeconds, 0);
+  const focusScores = todaySessions
+    .map((s) => s.focusScore)
+    .filter((x): x is number => x != null);
+  const focusAvg =
+    focusScores.length > 0
+      ? Math.round(focusScores.reduce((a, b) => a + b, 0) / focusScores.length)
+      : 0;
+  const weekSeconds = weekSessions.reduce((a, s) => a + s.durationSeconds, 0);
+
+  const dayLabels = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+  const last7 = Array.from({ length: 7 }, (_, i) => {
+    const d = daysAgo(6 - i);
+    const dStart = d.getTime();
+    const dEnd = dStart + 24 * 60 * 60 * 1000;
+    const sec = weekSessions
+      .filter((s) => s.startedAt >= dStart && s.startedAt < dEnd)
+      .reduce((a, s) => a + s.durationSeconds, 0);
+    return { day: dayLabels[d.getDay()], hours: +(sec / 3600).toFixed(1) };
+  });
+
+  const heatmapMap = new Map<string, number>();
+  heatmapSessions.forEach((s) => {
+    const key = dayKey(new Date(s.startedAt));
+    heatmapMap.set(key, (heatmapMap.get(key) ?? 0) + s.durationSeconds);
+  });
+  const heatmap = Array.from({ length: 90 }, (_, i) => {
+    const d = daysAgo(89 - i);
+    const key = dayKey(d);
+    return { date: key, seconds: heatmapMap.get(key) ?? 0 };
+  });
+  let streak = 0;
+  for (let i = heatmap.length - 1; i >= 0; i--) {
+    if (heatmap[i].seconds > 0) streak++;
+    else break;
+  }
+
+  const sessionsView = recentSessions.map((s) => {
+    const subj = activeSubjects.find((x) => x.id === s.subjectId);
+    return {
+      id: s.id,
+      subjectId: s.subjectId ?? "—",
+      subjectName: subj?.name ?? "Sem matéria",
+      subjectColor: subj?.color ?? "#71717a",
+      startedAt: new Date(s.startedAt),
+      endedAt: s.endedAt ? new Date(s.endedAt) : null,
+      durationSeconds: s.durationSeconds,
+      mode: s.mode.toLowerCase() as "pomodoro" | "free" | "reverse" | "custom",
+    };
+  });
+
+  const goalsView = goals
+    .filter((g) => g.active)
+    .map((g) => {
+      let current = 0;
+      if (g.type === "DAILY") {
+        if (g.metric === "HOURS") current = +(todaySeconds / 3600).toFixed(2);
+        else if (g.metric === "SESSIONS") current = todaySessions.length;
+      } else if (g.type === "WEEKLY") {
+        if (g.metric === "HOURS") current = +(weekSeconds / 3600).toFixed(2);
+        else if (g.metric === "SESSIONS") current = weekSessions.length;
+      }
+      return {
+        id: g.id,
+        label: g.label,
+        target: g.target,
+        current,
+        type: g.type.toLowerCase() as "daily" | "weekly" | "monthly",
+        metric: g.metric.toLowerCase() as
+          | "hours"
+          | "tasks"
+          | "sessions"
+          | "reviews",
+      };
+    });
+
+  const reviewsToday = reviews.filter(
+    (r) => r.status === "PENDING" && r.scheduledAt < tomorrow
+  ).length;
+  const flashcardsDue = flashcards.filter((c) => c.nextReview <= now).length;
+
+  return {
+    today: {
+      studiedSeconds: todaySeconds,
+      sessions: todaySessions.length,
+      focusPercentage: focusAvg,
+      streak,
+    },
+    week: { studiedSeconds: weekSeconds },
+    reviews: { today: reviewsToday, flashcardsDue },
+    subjects: subjectsView,
+    goals: goalsView,
+    sessions: sessionsView,
+    weekly: last7,
+    heatmap,
+  };
+}
+export type DashboardData = Awaited<ReturnType<typeof getDashboardData>>;
+
+// ─── Stats ────────────────────────────────────────────────────────────────
+
+export async function getStatsForPeriod(periodDays: number) {
+  const userId = getCurrentUserId();
+  const since = daysAgo(periodDays - 1).getTime();
+  const all = await userSessions(userId);
+  const sessions = all.filter((s) => s.startedAt >= since);
+  const subjects = await userSubjects(userId);
+  const subjMap = new Map(subjects.map((s) => [s.id, s]));
+
+  const totalSeconds = sessions.reduce((a, s) => a + s.durationSeconds, 0);
+  const focusScores = sessions
+    .map((s) => s.focusScore)
+    .filter((x): x is number => x != null);
+  const focusAvg =
+    focusScores.length > 0
+      ? Math.round(focusScores.reduce((a, b) => a + b, 0) / focusScores.length)
+      : 0;
+  const activeDaysSet = new Set(sessions.map((s) => dayKey(new Date(s.startedAt))));
+  const avgPerActiveDay = activeDaysSet.size > 0 ? totalSeconds / 3600 / activeDaysSet.size : 0;
+
+  const dayHoursMap = new Map<string, number>();
+  sessions.forEach((s) => {
+    const key = dayKey(new Date(s.startedAt));
+    dayHoursMap.set(key, (dayHoursMap.get(key) ?? 0) + s.durationSeconds);
+  });
+  let bestDay: { date: string; hours: number } | null = null;
+  for (const [date, secs] of dayHoursMap) {
+    const hours = secs / 3600;
+    if (!bestDay || hours > bestDay.hours) bestDay = { date, hours };
+  }
+
+  const weekdayLabels = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+  const byWeekday = weekdayLabels.map((label) => ({ label, hours: 0 }));
+  sessions.forEach((s) => {
+    byWeekday[new Date(s.startedAt).getDay()].hours += s.durationSeconds / 3600;
+  });
+  byWeekday.forEach((d) => (d.hours = +d.hours.toFixed(2)));
+
+  const subjectAgg = new Map<string, number>();
+  sessions.forEach((s) => {
+    const k = s.subjectId ?? "_none";
+    subjectAgg.set(k, (subjectAgg.get(k) ?? 0) + s.durationSeconds);
+  });
+  const bySubject = Array.from(subjectAgg.entries())
+    .map(([sid, secs]) => {
+      const s = subjMap.get(sid);
+      return {
+        id: sid,
+        name: s?.name ?? "Sem matéria",
+        color: s?.color ?? "#71717a",
+        hours: +(secs / 3600).toFixed(2),
+      };
+    })
+    .sort((a, b) => b.hours - a.hours);
+
+  const modeLabels: Record<string, { label: string; color: string }> = {
+    POMODORO: { label: "Pomodoro", color: "#a78bfa" },
+    FREE: { label: "Livre", color: "#60a5fa" },
+    REVERSE: { label: "Reverso", color: "#fbbf24" },
+    CUSTOM: { label: "Custom", color: "#34d399" },
+  };
+  const modeAgg = new Map<string, { secs: number; count: number }>();
+  sessions.forEach((s) => {
+    const e = modeAgg.get(s.mode) ?? { secs: 0, count: 0 };
+    e.secs += s.durationSeconds;
+    e.count += 1;
+    modeAgg.set(s.mode, e);
+  });
+  const byMode = Array.from(modeAgg.entries())
+    .map(([mode, v]) => ({
+      mode,
+      label: modeLabels[mode]?.label ?? mode,
+      color: modeLabels[mode]?.color ?? "#94a3b8",
+      hours: +(v.secs / 3600).toFixed(2),
+      sessions: v.count,
+    }))
+    .sort((a, b) => b.hours - a.hours);
+
+  return {
+    period: periodDays,
+    totalSeconds,
+    sessionCount: sessions.length,
+    activeDays: activeDaysSet.size,
+    focusAvg,
+    avgPerActiveDay: +avgPerActiveDay.toFixed(2),
+    bestDay,
+    byWeekday,
+    bySubject,
+    byMode,
+  };
+}
+export type StatsView = Awaited<ReturnType<typeof getStatsForPeriod>>;
+
+export async function getContentStatsForPeriod(periodDays: number) {
+  const userId = getCurrentUserId();
+  const since = daysAgo(periodDays - 1).getTime();
+  const subjects = await userSubjects(userId);
+  const subjectIds = new Set(subjects.map((s) => s.id));
+  const allTopics = await db().topics.toArray();
+  const userTopics = allTopics.filter((t) => subjectIds.has(t.subjectId));
+  const topicsTouched = userTopics.filter((t) => t.updatedAt >= since).length;
+  const topicsWithContent = userTopics.filter((t) => hasTopicContent(t.content)).length;
+
+  const dayLabels = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+  const writingByDay = Array.from({ length: periodDays }, (_, i) => {
+    const d = daysAgo(periodDays - 1 - i);
+    return {
+      date: dayKey(d),
+      label: dayLabels[d.getDay()],
+      edits: 0,
+    };
+  });
+  const byDate = new Map(writingByDay.map((d) => [d.date, d]));
+  for (const t of userTopics) {
+    if (t.updatedAt < since) continue;
+    const k = dayKey(new Date(t.updatedAt));
+    const slot = byDate.get(k);
+    if (slot) slot.edits += 1;
+  }
+
+  return {
+    totalTopics: userTopics.length,
+    topicsWithContent,
+    topicsTouched,
+    writingByDay,
+  };
+}
+export type ContentStats = Awaited<ReturnType<typeof getContentStatsForPeriod>>;
+
+// ─── Calendar ─────────────────────────────────────────────────────────────
+
+export async function getCalendarMonth(year: number, month: number) {
+  const userId = getCurrentUserId();
+  const monthStart = new Date(year, month, 1, 0, 0, 0, 0).getTime();
+  const monthEnd = new Date(year, month + 1, 1, 0, 0, 0, 0).getTime();
+
+  const [allSessions, reviews, events, subjects] = await Promise.all([
+    userSessions(userId),
+    db().reviews.where("userId").equals(userId).toArray(),
+    db().events.where("userId").equals(userId).toArray(),
+    userSubjects(userId),
+  ]);
+  const subjMap = new Map(
+    subjects.map((s) => [s.id, { id: s.id, name: s.name, color: s.color }])
+  );
+
+  const sessions = allSessions
+    .filter((s) => s.startedAt >= monthStart && s.startedAt < monthEnd)
+    .map((s) => {
+      const subj = s.subjectId ? subjMap.get(s.subjectId) : undefined;
+      return {
+        id: s.id,
+        startedAt: new Date(s.startedAt),
+        durationSeconds: s.durationSeconds,
+        mode: s.mode.toLowerCase() as "pomodoro" | "free" | "reverse" | "custom",
+        subjectName: subj?.name ?? null,
+        subjectColor: subj?.color ?? null,
+      };
+    });
+
+  const reviewsView = reviews
+    .filter((r) => r.scheduledAt >= monthStart && r.scheduledAt < monthEnd)
+    .map((r) => {
+      const subj = r.subjectId ? subjMap.get(r.subjectId) : undefined;
+      return {
+        id: r.id,
+        title: r.title,
+        status: r.status.toLowerCase() as "pending" | "completed" | "skipped",
+        scheduledAt: new Date(r.scheduledAt),
+        subjectName: subj?.name ?? null,
+        subjectColor: subj?.color ?? null,
+      };
+    });
+
+  const eventsView = events
+    .filter((e) => e.date >= monthStart && e.date < monthEnd)
+    .sort((a, b) => a.date - b.date)
+    .map((e) => eventToView(e, subjMap));
+
+  type DayCell = {
+    key: string;
+    date: Date;
+    seconds: number;
+    sessions: typeof sessions;
+    reviews: typeof reviewsView;
+    events: typeof eventsView;
+  };
+
+  const days: DayCell[] = [];
+  const cursor = new Date(year, month, 1);
+  const end = new Date(year, month + 1, 1);
+  while (cursor < end) {
+    days.push({
+      key: dayKey(cursor),
+      date: new Date(cursor),
+      seconds: 0,
+      sessions: [],
+      reviews: [],
+      events: [],
+    });
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  const byKey = new Map(days.map((d) => [d.key, d]));
+  sessions.forEach((s) => {
+    const cell = byKey.get(dayKey(s.startedAt));
+    if (cell) {
+      cell.seconds += s.durationSeconds;
+      cell.sessions.push(s);
+    }
+  });
+  reviewsView.forEach((r) => {
+    const cell = byKey.get(dayKey(r.scheduledAt));
+    if (cell) cell.reviews.push(r);
+  });
+  eventsView.forEach((e) => {
+    const cell = byKey.get(dayKey(e.date));
+    if (cell) cell.events.push(e);
+  });
+
+  return {
+    year,
+    month,
+    monthStart: new Date(year, month, 1),
+    days,
+    totalSeconds: days.reduce((a, d) => a + d.seconds, 0),
+    activeDays: days.filter((d) => d.seconds > 0).length,
+    sessionCount: sessions.length,
+    reviewCount: reviewsView.length,
+    eventCount: eventsView.length,
+  };
+}
+export type CalendarMonth = Awaited<ReturnType<typeof getCalendarMonth>>;
+
+export type StudySessionView = StudySessionRow;

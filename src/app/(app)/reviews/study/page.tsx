@@ -1,28 +1,39 @@
+"use client";
+
+import * as React from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 
 import { Header } from "@/components/layout/header";
+import { PageLoading } from "@/components/layout/page-loading";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { StudySession } from "@/components/reviews/study-session";
+import { useRepoQuery } from "@/lib/db/use-repo";
 import { getDueFlashcards } from "@/lib/queries";
 
-export const dynamic = "force-dynamic";
-
-interface StudyPageProps {
-  searchParams: Promise<{ deck?: string }>;
+export default function StudyPage() {
+  return (
+    <React.Suspense fallback={<PageLoading />}>
+      <StudyPageContent />
+    </React.Suspense>
+  );
 }
 
-export default async function StudyPage({ searchParams }: StudyPageProps) {
-  const { deck } = await searchParams;
-  const cards = await getDueFlashcards(deck);
+function StudyPageContent() {
+  const params = useSearchParams();
+  const deck = params.get("deck") ?? undefined;
+  const { data: cards, loading } = useRepoQuery(
+    () => getDueFlashcards(deck),
+    [deck]
+  );
+
+  if (loading || !cards) return <PageLoading />;
 
   if (cards.length === 0) {
     return (
       <>
-        <Header
-          title="Estudar flashcards"
-          subtitle={deck ?? "Todos os decks"}
-        />
+        <Header title="Estudar flashcards" subtitle={deck ?? "Todos os decks"} />
         <div className="mx-auto max-w-xl p-6 pt-12">
           <Card>
             <CardContent className="flex flex-col items-center gap-3 py-16 text-center">

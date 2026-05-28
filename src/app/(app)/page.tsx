@@ -1,7 +1,10 @@
+"use client";
+
 import Link from "next/link";
 import { Clock, Flame, Repeat, Timer as TimerIcon } from "lucide-react";
 
 import { Header } from "@/components/layout/header";
+import { PageLoading } from "@/components/layout/page-loading";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { GoalsCard } from "@/components/dashboard/goals-card";
 import { SubjectsCard } from "@/components/dashboard/subjects-card";
@@ -9,9 +12,8 @@ import { SessionsCard } from "@/components/dashboard/sessions-card";
 import { WeeklyChart } from "@/components/dashboard/weekly-chart";
 import { Heatmap } from "@/components/dashboard/heatmap";
 import { formatDuration } from "@/lib/utils";
+import { useRepoQuery } from "@/lib/db/use-repo";
 import { getDashboardData } from "@/lib/queries";
-
-export const dynamic = "force-dynamic";
 
 function greeting(): string {
   const h = new Date().getHours();
@@ -21,8 +23,9 @@ function greeting(): string {
   return "Boa noite";
 }
 
-export default async function DashboardPage() {
-  const data = await getDashboardData();
+export default function DashboardPage() {
+  const { data, loading } = useRepoQuery(() => getDashboardData(), []);
+  if (loading || !data) return <PageLoading />;
 
   return (
     <>

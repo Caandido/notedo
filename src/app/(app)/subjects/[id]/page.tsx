@@ -1,4 +1,6 @@
-import { notFound } from "next/navigation";
+"use client";
+
+import { notFound, useParams } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -10,6 +12,7 @@ import {
 } from "lucide-react";
 
 import { Header } from "@/components/layout/header";
+import { PageLoading } from "@/components/layout/page-loading";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -20,9 +23,8 @@ import { GradeForm } from "@/components/grades/grade-form";
 import { GradeRow } from "@/components/grades/grade-row";
 import { gradeColorByPercent } from "@/components/grades/grade-styles";
 import { cn, formatDuration, formatHours } from "@/lib/utils";
+import { useRepoQuery } from "@/lib/db/use-repo";
 import { getGradesForSubject, getSubjectDetail } from "@/lib/queries";
-
-export const dynamic = "force-dynamic";
 
 const priorityLabel = {
   low: "Baixa",
@@ -48,19 +50,15 @@ function relativeTime(date: Date): string {
   return `${diffD}d atrás`;
 }
 
-interface SubjectDetailPageProps {
-  params: Promise<{ id: string }>;
-}
+export default function SubjectDetailPage() {
+  const { id } = useParams<{ id: string }>();
+  const detailQ = useRepoQuery(() => getSubjectDetail(id), [id]);
+  const gradesQ = useRepoQuery(() => getGradesForSubject(id), [id]);
 
-export default async function SubjectDetailPage({
-  params,
-}: SubjectDetailPageProps) {
-  const { id } = await params;
-  const [detail, gradesData] = await Promise.all([
-    getSubjectDetail(id),
-    getGradesForSubject(id),
-  ]);
-  if (!detail) notFound();
+  if (detailQ.loading || gradesQ.loading) return <PageLoading />;
+  if (!detailQ.data) notFound();
+  const detail = detailQ.data;
+  const gradesData = gradesQ.data ?? { grades: [], average: null };
 
   const { subject, topics, topicCount, totalSeconds, sessionCount, recentSessions } =
     detail;

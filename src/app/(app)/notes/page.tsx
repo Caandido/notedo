@@ -1,28 +1,37 @@
+"use client";
+
 import { GraduationCap } from "lucide-react";
 
 import { Header } from "@/components/layout/header";
+import { PageLoading } from "@/components/layout/page-loading";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { GradeForm } from "@/components/grades/grade-form";
 import { GradeRow } from "@/components/grades/grade-row";
 import { SubjectAverageCard } from "@/components/grades/subject-average-card";
 import { gradeColorByPercent } from "@/components/grades/grade-styles";
 import { cn } from "@/lib/utils";
+import { useRepoQuery } from "@/lib/db/use-repo";
 import {
   getGradesForUser,
   getGradesSummary,
   getSubjectsForUser,
 } from "@/lib/queries";
 
-export const dynamic = "force-dynamic";
+export default function NotesPage() {
+  const gradesQ = useRepoQuery(() => getGradesForUser(), []);
+  const summaryQ = useRepoQuery(() => getGradesSummary(), []);
+  const subjectsQ = useRepoQuery(() => getSubjectsForUser(), []);
 
-export default async function NotesPage() {
-  const [grades, summary, subjects] = await Promise.all([
-    getGradesForUser(),
-    getGradesSummary(),
-    getSubjectsForUser(),
-  ]);
-
-  const subjectOptions = subjects.map((s) => ({
+  if (
+    gradesQ.loading || !gradesQ.data ||
+    summaryQ.loading || !summaryQ.data ||
+    subjectsQ.loading || !subjectsQ.data
+  ) {
+    return <PageLoading />;
+  }
+  const grades = gradesQ.data;
+  const summary = summaryQ.data;
+  const subjectOptions = subjectsQ.data.map((s) => ({
     id: s.id,
     name: s.name,
     color: s.color,

@@ -1,9 +1,8 @@
-"use server";
+"use client";
 
-import { revalidatePath } from "next/cache";
-
-import { prisma } from "@/lib/prisma";
+import { cuid, db } from "@/lib/db";
 import { getCurrentUserId } from "@/lib/auth";
+import { invalidateAll } from "@/lib/db/use-repo";
 
 const COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 
@@ -21,40 +20,53 @@ export async function createSubject(input: CreateSubjectInput) {
   if (!COLOR_RE.test(input.color))
     return { ok: false as const, error: "Cor inválida." };
 
-  const userId = await getCurrentUserId();
-
-  const subject = await prisma.subject.create({
-    data: {
-      userId,
-      name,
-      color: input.color,
-      priority: (input.priority ?? "medium").toUpperCase() as
-        | "LOW"
-        | "MEDIUM"
-        | "HIGH",
-      tags: (input.tags ?? []).map((t) => t.trim()).filter(Boolean).slice(0, 8),
-    },
+  const userId = getCurrentUserId();
+  const now = Date.now();
+  const id = cuid();
+  await db().subjects.add({
+    id,
+    userId,
+    name,
+    color: input.color,
+    icon: null,
+    priority: (input.priority ?? "medium").toUpperCase() as
+      | "LOW"
+      | "MEDIUM"
+      | "HIGH",
+    progress: 0,
+    tags: (input.tags ?? []).map((t) => t.trim()).filter(Boolean).slice(0, 8),
+    archived: false,
+    createdAt: now,
+    updatedAt: now,
   });
 
-  revalidatePath("/subjects");
-  revalidatePath("/timer");
-  revalidatePath("/");
-
-  return { ok: true as const, id: subject.id };
+  invalidateAll();
+  return { ok: true as const, id };
 }
 
 export async function archiveSubject(subjectId: string) {
-  const userId = await getCurrentUserId();
-  const updated = await prisma.subject.updateMany({
-    where: { id: subjectId, userId },
-    data: { archived: true },
-  });
-  if (updated.count === 0) {
+  const userId = getCurrentUserId();
+  const subject = await db().subjects.get(subjectId);
+  if (!subject || subject.userId !== userId)
     return { ok: false as const, error: "Matéria não encontrada." };
-  }
-  revalidatePath("/subjects");
-  revalidatePath("/timer");
-  revalidatePath("/");
+  await db().subjects.update(subjectId, {
+    archived: true,
+    updatedAt: Date.now(),
+  });
+  invalidateAll();
+  return { ok: true as const };
+}
+
+export async function unarchiveSubject(subjectId: string) {
+  const userId = getCurrentUserId();
+  const subject = await db().subjects.get(subjectId);
+  if (!subject || subject.userId !== userId)
+    return { ok: false as const, error: "Matéria não encontrada." };
+  await db().subjects.update(subjectId, {
+    archived: false,
+    updatedAt: Date.now(),
+  });
+  invalidateAll();
   return { ok: true as const };
 }
 
@@ -74,35 +86,18 @@ export async function updateSubject(input: UpdateSubjectInput) {
   if (!COLOR_RE.test(input.color))
     return { ok: false as const, error: "Cor inválida." };
 
-  const userId = await getCurrentUserId();
-  const updated = await prisma.subject.updateMany({
-    where: { id: input.id, userId },
-    data: {
-      name,
-      color: input.color,
-      priority: input.priority.toUpperCase() as "LOW" | "MEDIUM" | "HIGH",
-      tags: (input.tags ?? []).map((t) => t.trim()).filter(Boolean).slice(0, 8),
-    },
-  });
-  if (updated.count === 0)
+  const userId = getCurrentUserId();
+  const subject = await db().subjects.get(input.id);
+  if (!subject || subject.userId !== userId)
     return { ok: false as const, error: "Matéria não encontrada." };
 
-  revalidatePath("/subjects");
-  revalidatePath(`/subjects/${input.id}`);
-  revalidatePath("/timer");
-  revalidatePath("/");
-  return { ok: true as const };
-}
-
-export async function unarchiveSubject(subjectId: string) {
-  const userId = await getCurrentUserId();
-  const updated = await prisma.subject.updateMany({
-    where: { id: subjectId, userId },
-    data: { archived: false },
+  await db().subjects.update(input.id, {
+    name,
+    color: input.color,
+    priority: input.priority.toUpperCase() as "LOW" | "MEDIUM" | "HIGH",
+    tags: (input.tags ?? []).map((t) => t.trim()).filter(Boolean).slice(0, 8),
+    updatedAt: Date.now(),
   });
-  if (updated.count === 0) {
-    return { ok: false as const, error: "Matéria não encontrada." };
-  }
-  revalidatePath("/subjects");
+  invalidateAll();
   return { ok: true as const };
 }

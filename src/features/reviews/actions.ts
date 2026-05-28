@@ -1,9 +1,8 @@
-"use server";
+"use client";
 
-import { revalidatePath } from "next/cache";
-
-import { prisma } from "@/lib/prisma";
+import { cuid, db } from "@/lib/db";
 import { getCurrentUserId } from "@/lib/auth";
+import { invalidateAll } from "@/lib/db/use-repo";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_INTERVAL_DAYS = 60;
@@ -17,102 +16,88 @@ export type CreateReviewInput = {
 export async function createReview(input: CreateReviewInput) {
   const title = input.title.trim();
   if (!title) return { ok: false as const, error: "Título obrigatório." };
-  if (title.length > 120)
-    return { ok: false as const, error: "Título muito longo." };
+  const ts = new Date(input.scheduledAt).getTime();
+  if (Number.isNaN(ts)) return { ok: false as const, error: "Data inválida." };
 
-  const date = new Date(input.scheduledAt);
-  if (Number.isNaN(date.getTime()))
-    return { ok: false as const, error: "Data inválida." };
-
-  const userId = await getCurrentUserId();
-
+  const userId = getCurrentUserId();
   if (input.subjectId) {
-    const owned = await prisma.subject.findFirst({
-      where: { id: input.subjectId, userId },
-      select: { id: true },
-    });
-    if (!owned) return { ok: false as const, error: "Matéria não encontrada." };
+    const subject = await db().subjects.get(input.subjectId);
+    if (!subject || subject.userId !== userId)
+      return { ok: false as const, error: "Matéria não encontrada." };
   }
 
-  await prisma.review.create({
-    data: {
-      userId,
-      subjectId: input.subjectId ?? undefined,
-      title,
-      scheduledAt: date,
-      interval: 1,
-      ease: 2.5,
-      status: "PENDING",
-    },
+  await db().reviews.add({
+    id: cuid(),
+    userId,
+    subjectId: input.subjectId,
+    title,
+    scheduledAt: ts,
+    completedAt: null,
+    interval: 1,
+    ease: 2.5,
+    status: "PENDING",
+    createdAt: Date.now(),
   });
-
-  revalidatePath("/reviews");
-  revalidatePath("/");
+  invalidateAll();
   return { ok: true as const };
 }
 
 export async function completeReview(reviewId: string) {
-  const userId = await getCurrentUserId();
-  const review = await prisma.review.findFirst({
-    where: { id: reviewId, userId },
-  });
-  if (!review) return { ok: false as const, error: "Revisão não encontrada." };
+  const userId = getCurrentUserId();
+  const review = await db().reviews.get(reviewId);
+  if (!review || review.userId !== userId)
+    return { ok: false as const, error: "Revisão não encontrada." };
 
   const nextInterval = Math.min(MAX_INTERVAL_DAYS, review.interval * 2);
-  const nextScheduledAt = new Date(Date.now() + nextInterval * DAY_MS);
+  const nextScheduledAt = Date.now() + nextInterval * DAY_MS;
 
-  await prisma.$transaction([
-    prisma.review.update({
-      where: { id: review.id },
-      data: { status: "COMPLETED", completedAt: new Date() },
-    }),
-    prisma.review.create({
-      data: {
-        userId,
-        subjectId: review.subjectId,
-        title: review.title,
-        scheduledAt: nextScheduledAt,
-        interval: nextInterval,
-        ease: review.ease,
-        status: "PENDING",
-      },
-    }),
-  ]);
-
-  revalidatePath("/reviews");
-  revalidatePath("/");
+  await db().transaction("rw", db().reviews, async () => {
+    await db().reviews.update(review.id, {
+      status: "COMPLETED",
+      completedAt: Date.now(),
+    });
+    await db().reviews.add({
+      id: cuid(),
+      userId,
+      subjectId: review.subjectId,
+      title: review.title,
+      scheduledAt: nextScheduledAt,
+      completedAt: null,
+      interval: nextInterval,
+      ease: review.ease,
+      status: "PENDING",
+      createdAt: Date.now(),
+    });
+  });
+  invalidateAll();
   return { ok: true as const };
 }
 
 export async function skipReview(reviewId: string) {
-  const userId = await getCurrentUserId();
-  const review = await prisma.review.findFirst({
-    where: { id: reviewId, userId },
+  const userId = getCurrentUserId();
+  const review = await db().reviews.get(reviewId);
+  if (!review || review.userId !== userId)
+    return { ok: false as const, error: "Revisão não encontrada." };
+
+  await db().transaction("rw", db().reviews, async () => {
+    await db().reviews.update(review.id, {
+      status: "SKIPPED",
+      completedAt: Date.now(),
+    });
+    await db().reviews.add({
+      id: cuid(),
+      userId,
+      subjectId: review.subjectId,
+      title: review.title,
+      scheduledAt: Date.now() + DAY_MS,
+      completedAt: null,
+      interval: review.interval,
+      ease: review.ease,
+      status: "PENDING",
+      createdAt: Date.now(),
+    });
   });
-  if (!review) return { ok: false as const, error: "Revisão não encontrada." };
-
-  const nextScheduledAt = new Date(Date.now() + DAY_MS);
-
-  await prisma.$transaction([
-    prisma.review.update({
-      where: { id: review.id },
-      data: { status: "SKIPPED", completedAt: new Date() },
-    }),
-    prisma.review.create({
-      data: {
-        userId,
-        subjectId: review.subjectId,
-        title: review.title,
-        scheduledAt: nextScheduledAt,
-        interval: review.interval,
-        ease: review.ease,
-        status: "PENDING",
-      },
-    }),
-  ]);
-
-  revalidatePath("/reviews");
-  revalidatePath("/");
+  invalidateAll();
   return { ok: true as const };
 }
 
@@ -125,34 +110,25 @@ export type UpdateReviewInput = {
 export async function updateReview(input: UpdateReviewInput) {
   const title = input.title.trim();
   if (!title) return { ok: false as const, error: "Título obrigatório." };
-  if (title.length > 120)
-    return { ok: false as const, error: "Título muito longo." };
-  const date = new Date(input.scheduledAt);
-  if (Number.isNaN(date.getTime()))
-    return { ok: false as const, error: "Data inválida." };
+  const ts = new Date(input.scheduledAt).getTime();
+  if (Number.isNaN(ts)) return { ok: false as const, error: "Data inválida." };
 
-  const userId = await getCurrentUserId();
-  const updated = await prisma.review.updateMany({
-    where: { id: input.id, userId },
-    data: { title, scheduledAt: date },
-  });
-  if (updated.count === 0)
+  const userId = getCurrentUserId();
+  const review = await db().reviews.get(input.id);
+  if (!review || review.userId !== userId)
     return { ok: false as const, error: "Revisão não encontrada." };
 
-  revalidatePath("/reviews");
-  revalidatePath("/");
+  await db().reviews.update(input.id, { title, scheduledAt: ts });
+  invalidateAll();
   return { ok: true as const };
 }
 
 export async function deleteReview(reviewId: string) {
-  const userId = await getCurrentUserId();
-  const deleted = await prisma.review.deleteMany({
-    where: { id: reviewId, userId },
-  });
-  if (deleted.count === 0)
+  const userId = getCurrentUserId();
+  const review = await db().reviews.get(reviewId);
+  if (!review || review.userId !== userId)
     return { ok: false as const, error: "Revisão não encontrada." };
-
-  revalidatePath("/reviews");
-  revalidatePath("/");
+  await db().reviews.delete(reviewId);
+  invalidateAll();
   return { ok: true as const };
 }

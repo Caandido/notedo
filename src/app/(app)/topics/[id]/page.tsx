@@ -1,4 +1,6 @@
-import { notFound } from "next/navigation";
+"use client";
+
+import { notFound, useParams } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -10,6 +12,7 @@ import {
 } from "lucide-react";
 
 import { Header } from "@/components/layout/header";
+import { PageLoading } from "@/components/layout/page-loading";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -18,9 +21,8 @@ import { NewTopicForm } from "@/components/subjects/new-topic-form";
 import { EditTopicTitle } from "@/components/subjects/edit-topic-title";
 import { TopicContentEditor } from "@/components/subjects/topic-content-editor";
 import { formatDuration, formatHours } from "@/lib/utils";
+import { useRepoQuery } from "@/lib/db/use-repo";
 import { getTopicDetail } from "@/lib/queries";
-
-export const dynamic = "force-dynamic";
 
 const modeLabel: Record<string, string> = {
   pomodoro: "Pomodoro",
@@ -40,15 +42,14 @@ function relativeTime(date: Date): string {
   return `${diffD}d atrás`;
 }
 
-interface TopicDetailPageProps {
-  params: Promise<{ id: string }>;
-}
+export default function TopicDetailPage() {
+  const { id } = useParams<{ id: string }>();
+  const { data: detail, loading } = useRepoQuery(
+    () => getTopicDetail(id),
+    [id]
+  );
 
-export default async function TopicDetailPage({
-  params,
-}: TopicDetailPageProps) {
-  const { id } = await params;
-  const detail = await getTopicDetail(id);
+  if (loading) return <PageLoading />;
   if (!detail) notFound();
 
   const {

@@ -1,11 +1,12 @@
-"use server";
+"use client";
 
-import { revalidatePath } from "next/cache";
-
-import { prisma } from "@/lib/prisma";
+import { cuid, db } from "@/lib/db";
 import { getCurrentUserId } from "@/lib/auth";
+import { invalidateAll } from "@/lib/db/use-repo";
 
 export type EventType = "exam" | "task" | "class" | "custom";
+
+const VALID_TYPES: EventType[] = ["exam", "task", "class", "custom"];
 
 export type CreateEventInput = {
   title: string;
@@ -15,107 +16,82 @@ export type CreateEventInput = {
   notes?: string;
 };
 
-const VALID_TYPES: EventType[] = ["exam", "task", "class", "custom"];
-
 export async function createEvent(input: CreateEventInput) {
   const title = input.title.trim();
   if (!title) return { ok: false as const, error: "Título obrigatório." };
-  if (title.length > 120)
-    return { ok: false as const, error: "Título muito longo." };
   if (!VALID_TYPES.includes(input.type))
     return { ok: false as const, error: "Tipo inválido." };
+  const ts = new Date(input.date).getTime();
+  if (Number.isNaN(ts)) return { ok: false as const, error: "Data inválida." };
 
-  const date = new Date(input.date);
-  if (Number.isNaN(date.getTime()))
-    return { ok: false as const, error: "Data inválida." };
-
-  const userId = await getCurrentUserId();
-
+  const userId = getCurrentUserId();
   if (input.subjectId) {
-    const owned = await prisma.subject.findFirst({
-      where: { id: input.subjectId, userId },
-      select: { id: true },
-    });
-    if (!owned) return { ok: false as const, error: "Matéria não encontrada." };
+    const subject = await db().subjects.get(input.subjectId);
+    if (!subject || subject.userId !== userId)
+      return { ok: false as const, error: "Matéria não encontrada." };
   }
 
-  await prisma.calendarEvent.create({
-    data: {
-      userId,
-      subjectId: input.subjectId ?? undefined,
-      type: input.type.toUpperCase() as "EXAM" | "TASK" | "CLASS" | "CUSTOM",
-      title,
-      date,
-      notes: input.notes?.trim() || undefined,
-    },
+  const now = Date.now();
+  await db().events.add({
+    id: cuid(),
+    userId,
+    subjectId: input.subjectId ?? null,
+    type: input.type.toUpperCase() as "EXAM" | "TASK" | "CLASS" | "CUSTOM",
+    title,
+    notes: input.notes?.trim() || null,
+    date: ts,
+    done: false,
+    createdAt: now,
+    updatedAt: now,
   });
-
-  revalidatePath("/calendar");
-  revalidatePath("/");
+  invalidateAll();
   return { ok: true as const };
 }
 
-export type UpdateEventInput = {
-  id: string;
-  title: string;
-  type: EventType;
-  date: string;
-  subjectId?: string | null;
-  notes?: string;
-};
+export type UpdateEventInput = CreateEventInput & { id: string };
 
 export async function updateEvent(input: UpdateEventInput) {
   const title = input.title.trim();
   if (!title) return { ok: false as const, error: "Título obrigatório." };
-  if (!VALID_TYPES.includes(input.type))
-    return { ok: false as const, error: "Tipo inválido." };
-  const date = new Date(input.date);
-  if (Number.isNaN(date.getTime()))
-    return { ok: false as const, error: "Data inválida." };
+  const ts = new Date(input.date).getTime();
+  if (Number.isNaN(ts)) return { ok: false as const, error: "Data inválida." };
 
-  const userId = await getCurrentUserId();
-  const updated = await prisma.calendarEvent.updateMany({
-    where: { id: input.id, userId },
-    data: {
-      title,
-      type: input.type.toUpperCase() as "EXAM" | "TASK" | "CLASS" | "CUSTOM",
-      date,
-      subjectId: input.subjectId ?? null,
-      notes: input.notes?.trim() || null,
-    },
-  });
-  if (updated.count === 0)
+  const userId = getCurrentUserId();
+  const event = await db().events.get(input.id);
+  if (!event || event.userId !== userId)
     return { ok: false as const, error: "Evento não encontrado." };
 
-  revalidatePath("/calendar");
-  revalidatePath("/");
+  await db().events.update(input.id, {
+    title,
+    type: input.type.toUpperCase() as "EXAM" | "TASK" | "CLASS" | "CUSTOM",
+    date: ts,
+    subjectId: input.subjectId ?? null,
+    notes: input.notes?.trim() || null,
+    updatedAt: Date.now(),
+  });
+  invalidateAll();
   return { ok: true as const };
 }
 
 export async function toggleEventDone(eventId: string) {
-  const userId = await getCurrentUserId();
-  const event = await prisma.calendarEvent.findFirst({
-    where: { id: eventId, userId },
-    select: { id: true, done: true },
+  const userId = getCurrentUserId();
+  const event = await db().events.get(eventId);
+  if (!event || event.userId !== userId)
+    return { ok: false as const, error: "Evento não encontrado." };
+  await db().events.update(eventId, {
+    done: !event.done,
+    updatedAt: Date.now(),
   });
-  if (!event) return { ok: false as const, error: "Evento não encontrado." };
-  await prisma.calendarEvent.update({
-    where: { id: event.id },
-    data: { done: !event.done },
-  });
-  revalidatePath("/calendar");
-  revalidatePath("/");
+  invalidateAll();
   return { ok: true as const };
 }
 
 export async function deleteEvent(eventId: string) {
-  const userId = await getCurrentUserId();
-  const deleted = await prisma.calendarEvent.deleteMany({
-    where: { id: eventId, userId },
-  });
-  if (deleted.count === 0)
+  const userId = getCurrentUserId();
+  const event = await db().events.get(eventId);
+  if (!event || event.userId !== userId)
     return { ok: false as const, error: "Evento não encontrado." };
-  revalidatePath("/calendar");
-  revalidatePath("/");
+  await db().events.delete(eventId);
+  invalidateAll();
   return { ok: true as const };
 }
