@@ -1,15 +1,5 @@
 import { prisma } from "@/lib/prisma";
-
-const DEMO_EMAIL = "demo@notedo.app";
-
-async function getDemoUserId(): Promise<string> {
-  const user = await prisma.user.upsert({
-    where: { email: DEMO_EMAIL },
-    update: {},
-    create: { email: DEMO_EMAIL, name: "Usuário Demo" },
-  });
-  return user.id;
-}
+import { getCurrentUserId } from "@/lib/auth";
 
 function startOfDay(d: Date = new Date()): Date {
   const x = new Date(d);
@@ -24,7 +14,7 @@ function daysAgo(n: number): Date {
 }
 
 export async function getDashboardData() {
-  const userId = await getDemoUserId();
+  const userId = await getCurrentUserId();
 
   const today = startOfDay();
   const weekStart = daysAgo(6);
@@ -191,3 +181,26 @@ function computeStreak(heatmap: { date: string; seconds: number }[]): number {
 }
 
 export type DashboardData = Awaited<ReturnType<typeof getDashboardData>>;
+
+export async function getSubjectsForUser() {
+  const userId = await getCurrentUserId();
+  const subjects = await prisma.subject.findMany({
+    where: { userId, archived: false },
+    orderBy: { updatedAt: "desc" },
+    include: {
+      sessions: { select: { durationSeconds: true } },
+    },
+  });
+  return subjects.map((s) => ({
+    id: s.id,
+    name: s.name,
+    color: s.color,
+    priority: s.priority.toLowerCase() as "low" | "medium" | "high",
+    progress: s.progress,
+    tags: s.tags,
+    totalSeconds: s.sessions.reduce((acc, x) => acc + x.durationSeconds, 0),
+    sessionCount: s.sessions.length,
+  }));
+}
+
+export type SubjectView = Awaited<ReturnType<typeof getSubjectsForUser>>[number];
