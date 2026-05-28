@@ -590,3 +590,114 @@ export async function getSubjectDetail(subjectId: string) {
 }
 
 export type SubjectDetail = Awaited<ReturnType<typeof getSubjectDetail>>;
+
+export async function getCalendarMonth(year: number, month: number) {
+  const userId = await getCurrentUserId();
+
+  const monthStart = new Date(year, month, 1, 0, 0, 0, 0);
+  const monthEnd = new Date(year, month + 1, 1, 0, 0, 0, 0);
+
+  const [sessions, reviews] = await Promise.all([
+    prisma.studySession.findMany({
+      where: { userId, startedAt: { gte: monthStart, lt: monthEnd } },
+      select: {
+        id: true,
+        startedAt: true,
+        durationSeconds: true,
+        mode: true,
+        subject: { select: { name: true, color: true } },
+      },
+    }),
+    prisma.review.findMany({
+      where: {
+        userId,
+        scheduledAt: { gte: monthStart, lt: monthEnd },
+      },
+      select: {
+        id: true,
+        title: true,
+        status: true,
+        scheduledAt: true,
+        subject: { select: { name: true, color: true } },
+      },
+    }),
+  ]);
+
+  function dayKey(d: Date): string {
+    const y = d.getFullYear();
+    const m = (d.getMonth() + 1).toString().padStart(2, "0");
+    const day = d.getDate().toString().padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  }
+
+  type DayCell = {
+    key: string;
+    date: Date;
+    seconds: number;
+    sessions: typeof sessionsView;
+    reviews: typeof reviewsView;
+  };
+
+  const sessionsView = sessions.map((s) => ({
+    id: s.id,
+    startedAt: s.startedAt,
+    durationSeconds: s.durationSeconds,
+    mode: s.mode.toLowerCase() as "pomodoro" | "free" | "reverse" | "custom",
+    subjectName: s.subject?.name ?? null,
+    subjectColor: s.subject?.color ?? null,
+  }));
+
+  const reviewsView = reviews.map((r) => ({
+    id: r.id,
+    title: r.title,
+    status: r.status.toLowerCase() as "pending" | "completed" | "skipped",
+    scheduledAt: r.scheduledAt,
+    subjectName: r.subject?.name ?? null,
+    subjectColor: r.subject?.color ?? null,
+  }));
+
+  const days: DayCell[] = [];
+  const cursor = new Date(monthStart);
+  while (cursor < monthEnd) {
+    const key = dayKey(cursor);
+    days.push({
+      key,
+      date: new Date(cursor),
+      seconds: 0,
+      sessions: [],
+      reviews: [],
+    });
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  const byKey = new Map(days.map((d) => [d.key, d]));
+
+  sessionsView.forEach((s) => {
+    const cell = byKey.get(dayKey(new Date(s.startedAt)));
+    if (cell) {
+      cell.seconds += s.durationSeconds;
+      cell.sessions.push(s);
+    }
+  });
+
+  reviewsView.forEach((r) => {
+    const cell = byKey.get(dayKey(new Date(r.scheduledAt)));
+    if (cell) cell.reviews.push(r);
+  });
+
+  const totalSeconds = days.reduce((a, d) => a + d.seconds, 0);
+  const activeDays = days.filter((d) => d.seconds > 0).length;
+
+  return {
+    year,
+    month,
+    monthStart,
+    days,
+    totalSeconds,
+    activeDays,
+    sessionCount: sessions.length,
+    reviewCount: reviews.length,
+  };
+}
+
+export type CalendarMonth = Awaited<ReturnType<typeof getCalendarMonth>>;
