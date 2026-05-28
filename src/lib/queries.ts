@@ -509,13 +509,89 @@ export async function getStatsForPeriod(periodDays: number) {
 
 export type StatsView = Awaited<ReturnType<typeof getStatsForPeriod>>;
 
+export async function getContentStatsForPeriod(periodDays: number) {
+  const userId = await getCurrentUserId();
+  const since = daysAgo(periodDays - 1);
+
+  const [allTopics, topicsTouched, allNotes, notesTouched] =
+    await Promise.all([
+      prisma.topic.findMany({
+        where: { subject: { userId } },
+        select: { id: true, content: true, updatedAt: true },
+      }),
+      prisma.topic.count({
+        where: { subject: { userId }, updatedAt: { gte: since } },
+      }),
+      prisma.note.findMany({
+        where: { userId },
+        select: { id: true, content: true, updatedAt: true },
+      }),
+      prisma.note.count({
+        where: { userId, updatedAt: { gte: since } },
+      }),
+    ]);
+
+  const topicsWithContent = allTopics.filter((t) =>
+    hasTopicContent(t.content)
+  ).length;
+  const notesWithContent = allNotes.filter((n) =>
+    hasTopicContent(n.content)
+  ).length;
+
+  const dayLabels = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+  const writingByDay = Array.from({ length: periodDays }, (_, i) => {
+    const d = daysAgo(periodDays - 1 - i);
+    return {
+      date: d.toISOString().slice(0, 10),
+      label: dayLabels[d.getDay()],
+      edits: 0,
+    };
+  });
+
+  const byDate = new Map(writingByDay.map((d) => [d.date, d]));
+  const sinceMs = since.getTime();
+  for (const t of allTopics) {
+    if (t.updatedAt.getTime() < sinceMs) continue;
+    const key = t.updatedAt.toISOString().slice(0, 10);
+    const slot = byDate.get(key);
+    if (slot) slot.edits += 1;
+  }
+  for (const n of allNotes) {
+    if (n.updatedAt.getTime() < sinceMs) continue;
+    const key = n.updatedAt.toISOString().slice(0, 10);
+    const slot = byDate.get(key);
+    if (slot) slot.edits += 1;
+  }
+
+  return {
+    totalTopics: allTopics.length,
+    topicsWithContent,
+    topicsTouched,
+    totalNotes: allNotes.length,
+    notesWithContent,
+    notesTouched,
+    writingByDay,
+  };
+}
+
+export type ContentStats = Awaited<
+  ReturnType<typeof getContentStatsForPeriod>
+>;
+
 export type TopicNode = {
   id: string;
   title: string;
-  notes: string | null;
+  hasContent: boolean;
   order: number;
   children: TopicNode[];
 };
+
+function hasTopicContent(content: unknown): boolean {
+  if (!content || typeof content !== "object") return false;
+  const c = content as { content?: Array<{ content?: unknown[] }> };
+  if (!Array.isArray(c.content) || c.content.length === 0) return false;
+  return c.content.some((n) => Array.isArray(n.content) && n.content.length > 0);
+}
 
 export async function getSubjectDetail(subjectId: string) {
   const userId = await getCurrentUserId();
@@ -557,7 +633,7 @@ export async function getSubjectDetail(subjectId: string) {
     return list.map((t) => ({
       id: t.id,
       title: t.title,
-      notes: t.notes,
+      hasContent: hasTopicContent(t.content),
       order: t.order,
       children: buildTree(t.id),
     }));
@@ -786,7 +862,7 @@ export async function getTopicDetail(topicId: string) {
     return list.map((t) => ({
       id: t.id,
       title: t.title,
-      notes: t.notes,
+      hasContent: hasTopicContent(t.content),
       order: t.order,
       children: buildTree(t.id),
     }));
@@ -798,7 +874,7 @@ export async function getTopicDetail(topicId: string) {
     topic: {
       id: topic.id,
       title: topic.title,
-      notes: topic.notes,
+      content: topic.content,
       order: topic.order,
     },
     subject: topic.subject,
@@ -859,33 +935,25 @@ export async function getEventsForRange(start: Date, end: Date) {
 
 export type EventView = Awaited<ReturnType<typeof getEventsForRange>>[number];
 
-export async function getSummariesForSubject(subjectId: string) {
+export async function getNotesForUser() {
   const userId = await getCurrentUserId();
-  const owned = await prisma.subject.findFirst({
-    where: { id: subjectId, userId },
-    select: { id: true },
-  });
-  if (!owned) return [];
-
-  return prisma.summary.findMany({
-    where: { subjectId },
-    orderBy: { updatedAt: "desc" },
+  return prisma.note.findMany({
+    where: { userId },
+    orderBy: [{ pinned: "desc" }, { updatedAt: "desc" }],
     select: {
       id: true,
       title: true,
+      pinned: true,
       createdAt: true,
       updatedAt: true,
     },
   });
 }
 
-export async function getSummaryById(summaryId: string) {
+export async function getNoteById(noteId: string) {
   const userId = await getCurrentUserId();
-  return prisma.summary.findFirst({
-    where: { id: summaryId, subject: { userId } },
-    include: {
-      subject: { select: { id: true, name: true, color: true } },
-    },
+  return prisma.note.findFirst({
+    where: { id: noteId, userId },
   });
 }
 

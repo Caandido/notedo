@@ -12,6 +12,7 @@ import {
   LayoutDashboard,
   Repeat,
   Settings,
+  StickyNote,
   Target,
   Timer,
 } from "lucide-react";
@@ -24,6 +25,7 @@ const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/timer", label: "Cronômetro", icon: Timer },
   { href: "/subjects", label: "Matérias", icon: BookOpen },
+  { href: "/notes", label: "Notas", icon: StickyNote },
   { href: "/goals", label: "Metas", icon: Target },
   { href: "/reviews", label: "Revisões", icon: Repeat },
   { href: "/calendar", label: "Calendário", icon: Calendar },

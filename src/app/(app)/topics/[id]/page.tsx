@@ -16,7 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { TopicTree } from "@/components/subjects/topic-tree";
 import { NewTopicForm } from "@/components/subjects/new-topic-form";
 import { EditTopicTitle } from "@/components/subjects/edit-topic-title";
-import { TopicNotesEditor } from "@/components/subjects/topic-notes-editor";
+import { TopicContentEditor } from "@/components/subjects/topic-content-editor";
 import { formatDuration, formatHours } from "@/lib/utils";
 import { getTopicDetail } from "@/lib/queries";
 
@@ -154,8 +154,11 @@ export default async function TopicDetailPage({
         </section>
 
         <Card>
-          <CardContent className="p-5">
-            <TopicNotesEditor topicId={topic.id} initialNotes={topic.notes} />
+          <CardContent className="p-6">
+            <TopicContentEditor
+              topicId={topic.id}
+              initialContent={topic.content}
+            />
           </CardContent>
         </Card>
 

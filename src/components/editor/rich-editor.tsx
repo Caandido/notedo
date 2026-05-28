@@ -1,11 +1,15 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
 import { EditorContent, useEditor } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
-import Placeholder from "@tiptap/extension-placeholder";
-import Link from "@tiptap/extension-link";
+import { StarterKit } from "@tiptap/starter-kit";
+import { Placeholder } from "@tiptap/extension-placeholder";
+import { Link } from "@tiptap/extension-link";
+import { Image } from "@tiptap/extension-image";
+import { Table } from "@tiptap/extension-table";
+import { TableRow } from "@tiptap/extension-table-row";
+import { TableCell } from "@tiptap/extension-table-cell";
+import { TableHeader } from "@tiptap/extension-table-header";
 import {
   Bold,
   Check,
@@ -13,68 +17,73 @@ import {
   Heading1,
   Heading2,
   Heading3,
+  Image as ImageIcon,
   Italic,
   Link as LinkIcon,
   List,
   ListOrdered,
   Loader2,
-  Pencil,
   Quote,
   Redo2,
+  Sigma,
   Strikethrough,
+  Table as TableIcon,
   Undo2,
 } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { updateSummary } from "@/features/summaries/actions";
-
-interface SummaryEditorProps {
-  summaryId: string;
-  initialTitle: string;
-  initialContent: unknown;
-}
+import { InlineMath, BlockMath } from "@/components/editor/math-node";
 
 const AUTOSAVE_DELAY_MS = 1200;
 
-export function SummaryEditor({
-  summaryId,
-  initialTitle,
+type SaveStatus = "idle" | "saving" | "saved" | "error";
+
+interface RichEditorProps {
+  initialContent: unknown;
+  onSave: (content: unknown) => Promise<{ ok: boolean; error?: string }>;
+  placeholder?: string;
+}
+
+export function RichEditor({
   initialContent,
-}: SummaryEditorProps) {
-  const router = useRouter();
-  const [title, setTitle] = React.useState(initialTitle);
-  const [editingTitle, setEditingTitle] = React.useState(false);
-  const [savingTitle, setSavingTitle] = React.useState(false);
-  const [titleError, setTitleError] = React.useState<string | null>(null);
-  const [saveStatus, setSaveStatus] = React.useState<"idle" | "saving" | "saved" | "error">(
-    "idle"
-  );
+  onSave,
+  placeholder = "Comece a escrever...",
+}: RichEditorProps) {
+  const [saveStatus, setSaveStatus] = React.useState<SaveStatus>("idle");
   const saveTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastSavedContent = React.useRef<unknown>(initialContent);
 
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
         heading: { levels: [1, 2, 3] },
       }),
-      Placeholder.configure({
-        placeholder: "Comece a escrever seu resumo...",
-      }),
+      Placeholder.configure({ placeholder }),
       Link.configure({
         openOnClick: false,
         autolink: true,
+        HTMLAttributes: { class: "underline underline-offset-2" },
+      }),
+      Image.configure({
+        inline: false,
         HTMLAttributes: {
-          class: "underline underline-offset-2",
+          class: "rounded-md border border-[var(--color-border)] my-2",
         },
       }),
+      Table.configure({
+        resizable: true,
+        HTMLAttributes: { class: "tiptap-table" },
+      }),
+      TableRow,
+      TableHeader,
+      TableCell,
+      InlineMath,
+      BlockMath,
     ],
     content: (initialContent as object) ?? undefined,
     immediatelyRender: false,
     editorProps: {
       attributes: {
-        class:
-          "prose-tiptap min-h-[400px] focus:outline-none",
+        class: "prose-tiptap min-h-[400px] focus:outline-none",
       },
     },
     onUpdate: ({ editor }) => {
@@ -83,9 +92,8 @@ export function SummaryEditor({
       saveTimer.current = setTimeout(async () => {
         setSaveStatus("saving");
         const json = editor.getJSON();
-        const result = await updateSummary({ id: summaryId, content: json });
+        const result = await onSave(json);
         if (result.ok) {
-          lastSavedContent.current = json;
           setSaveStatus("saved");
           setTimeout(() => setSaveStatus("idle"), 1500);
         } else {
@@ -101,30 +109,6 @@ export function SummaryEditor({
     };
   }, []);
 
-  async function saveTitle() {
-    if (!title.trim()) return setTitleError("Título obrigatório.");
-    if (title.trim() === initialTitle) {
-      setEditingTitle(false);
-      return;
-    }
-    setSavingTitle(true);
-    setTitleError(null);
-    const result = await updateSummary({ id: summaryId, title });
-    setSavingTitle(false);
-    if (result.ok) {
-      setEditingTitle(false);
-      router.refresh();
-    } else {
-      setTitleError(result.error);
-    }
-  }
-
-  function cancelTitle() {
-    setEditingTitle(false);
-    setTitle(initialTitle);
-    setTitleError(null);
-  }
-
   function addLink() {
     if (!editor) return;
     const url = prompt("URL do link:");
@@ -136,78 +120,33 @@ export function SummaryEditor({
     editor.chain().focus().setLink({ href: url }).run();
   }
 
+  function addImage() {
+    if (!editor) return;
+    const url = prompt("URL da imagem (https://...):");
+    if (!url) return;
+    editor.chain().focus().setImage({ src: url }).run();
+  }
+
+  function addTable() {
+    if (!editor) return;
+    editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
+  }
+
+  function addMath(block: boolean) {
+    if (!editor) return;
+    const latex = prompt(block ? "LaTeX (equação)" : "LaTeX (inline)", "");
+    if (latex === null) return;
+    if (block) {
+      editor.chain().focus().insertContent({ type: "blockMath", attrs: { latex } }).run();
+    } else {
+      editor.chain().focus().insertContent({ type: "inlineMath", attrs: { latex } }).run();
+    }
+  }
+
   if (!editor) return null;
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          {editingTitle ? (
-            <div className="space-y-1">
-              <input
-                type="text"
-                autoFocus
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                maxLength={120}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") saveTitle();
-                  if (e.key === "Escape") cancelTitle();
-                }}
-                className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2 text-2xl font-semibold outline-none transition-colors focus:border-[var(--color-ring)]"
-              />
-              {titleError && (
-                <p className="text-xs text-rose-300">{titleError}</p>
-              )}
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  onClick={saveTitle}
-                  disabled={savingTitle}
-                  className="gap-1.5"
-                >
-                  {savingTitle ? (
-                    <Loader2 className="size-3.5 animate-spin" />
-                  ) : (
-                    <Check className="size-3.5" />
-                  )}
-                  Salvar
-                </Button>
-                <Button variant="ghost" size="sm" onClick={cancelTitle}>
-                  Cancelar
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setEditingTitle(true)}
-                aria-label="Editar título"
-              >
-                <Pencil className="size-3.5" />
-              </Button>
-            </div>
-          )}
-        </div>
-        <div className="shrink-0 text-xs text-[var(--color-muted-foreground)]">
-          {saveStatus === "saving" && (
-            <span className="inline-flex items-center gap-1">
-              <Loader2 className="size-3 animate-spin" />
-              Salvando
-            </span>
-          )}
-          {saveStatus === "saved" && (
-            <span className="text-emerald-300">Salvo</span>
-          )}
-          {saveStatus === "error" && (
-            <span className="text-rose-300">Erro ao salvar</span>
-          )}
-        </div>
-      </div>
-
+    <div className="space-y-3">
       <div className="sticky top-14 z-10 -mx-1 flex flex-wrap items-center gap-0.5 rounded-md border border-[var(--color-border)] bg-[var(--color-card)]/95 p-1 backdrop-blur-md">
         <ToolbarButton
           icon={Heading1}
@@ -278,6 +217,20 @@ export function SummaryEditor({
           aria="Link"
         />
         <Divider />
+        <ToolbarButton icon={ImageIcon} onClick={addImage} aria="Imagem (URL)" />
+        <ToolbarButton icon={TableIcon} onClick={addTable} aria="Tabela 3×3" />
+        <ToolbarButton
+          icon={Sigma}
+          onClick={() => addMath(false)}
+          aria="Equação inline ($)"
+        />
+        <ToolbarButton
+          icon={Sigma}
+          onClick={() => addMath(true)}
+          aria="Equação em bloco ($$)"
+          className="rotate-12"
+        />
+        <Divider />
         <ToolbarButton
           icon={Undo2}
           onClick={() => editor.chain().focus().undo().run()}
@@ -290,6 +243,23 @@ export function SummaryEditor({
           disabled={!editor.can().redo()}
           aria="Refazer"
         />
+        <div className="ml-auto pr-1 text-xs text-[var(--color-muted-foreground)]">
+          {saveStatus === "saving" && (
+            <span className="inline-flex items-center gap-1">
+              <Loader2 className="size-3 animate-spin" />
+              Salvando
+            </span>
+          )}
+          {saveStatus === "saved" && (
+            <span className="inline-flex items-center gap-1 text-emerald-300">
+              <Check className="size-3" />
+              Salvo
+            </span>
+          )}
+          {saveStatus === "error" && (
+            <span className="text-rose-300">Erro ao salvar</span>
+          )}
+        </div>
       </div>
 
       <EditorContent editor={editor} />
@@ -303,12 +273,14 @@ function ToolbarButton({
   onClick,
   aria,
   disabled,
+  className,
 }: {
   icon: React.ComponentType<{ className?: string }>;
   active?: boolean;
   onClick: () => void;
   aria: string;
   disabled?: boolean;
+  className?: string;
 }) {
   return (
     <button
@@ -323,7 +295,7 @@ function ToolbarButton({
         active && "bg-[var(--color-accent)] text-[var(--color-foreground)]"
       )}
     >
-      <Icon className="size-3.5" />
+      <Icon className={cn("size-3.5", className)} />
     </button>
   );
 }

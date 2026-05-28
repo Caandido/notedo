@@ -84,9 +84,13 @@ export async function renameTopic(topicId: string, title: string) {
   return { ok: true as const };
 }
 
-export async function updateTopicNotes(topicId: string, notes: string) {
-  if (notes.length > 4000)
-    return { ok: false as const, error: "Notas muito longas (máx. 4000)." };
+export async function updateTopicContent(topicId: string, content: unknown) {
+  const serialized = JSON.stringify(content);
+  if (serialized.length > 500_000)
+    return {
+      ok: false as const,
+      error: "Conteúdo muito grande (máx. 500KB).",
+    };
 
   const userId = await getCurrentUserId();
   const topic = await prisma.topic.findFirst({
@@ -97,10 +101,12 @@ export async function updateTopicNotes(topicId: string, notes: string) {
 
   await prisma.topic.update({
     where: { id: topic.id },
-    data: { notes: notes || null },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    data: { content: content as any },
   });
 
   revalidatePath(`/subjects/${topic.subjectId}`);
+  revalidatePath(`/topics/${topic.id}`);
   return { ok: true as const };
 }
 

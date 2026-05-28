@@ -29,6 +29,7 @@ model User {
   reviews    Review[]
   flashcards Flashcard[]
   events     CalendarEvent[]
+  notes      Note[]
 }
 
 model Account {
@@ -88,7 +89,6 @@ model Subject {
   sessions  StudySession[]
   reviews   Review[]
   events    CalendarEvent[]
-  summaries Summary[]
 
   @@index([userId])
 }
@@ -101,7 +101,7 @@ model Topic {
   parent    Topic?   @relation("TopicHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
   children  Topic[]  @relation("TopicHierarchy")
   title     String
-  notes     String?
+  content   Json     @default("{}")
   order     Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -236,14 +236,16 @@ model CalendarEvent {
   @@index([subjectId])
 }
 
-model Summary {
+model Note {
   id        String   @id @default(cuid())
-  subjectId String
-  subject   Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   title     String
   content   Json     @default("{}")
+  pinned    Boolean  @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([subjectId])
+  @@index([userId])
+  @@index([userId, updatedAt])
 }

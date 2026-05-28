@@ -12,8 +12,9 @@ import { PeriodTabs } from "@/components/stats/period-tabs";
 import { SubjectChart } from "@/components/stats/subject-chart";
 import { WeekdayChart } from "@/components/stats/weekday-chart";
 import { ModeChart } from "@/components/stats/mode-chart";
+import { WritingCard } from "@/components/stats/writing-card";
 import { formatDuration } from "@/lib/utils";
-import { getStatsForPeriod } from "@/lib/queries";
+import { getContentStatsForPeriod, getStatsForPeriod } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +28,10 @@ export default async function StatsPage({ searchParams }: StatsPageProps) {
   const params = await searchParams;
   const periodParam = params.period ?? "30";
   const period = ALLOWED_PERIODS.has(periodParam) ? periodParam : "30";
-  const stats = await getStatsForPeriod(parseInt(period, 10));
+  const [stats, contentStats] = await Promise.all([
+    getStatsForPeriod(parseInt(period, 10)),
+    getContentStatsForPeriod(parseInt(period, 10)),
+  ]);
 
   const bestDayLabel = stats.bestDay
     ? new Date(stats.bestDay.date).toLocaleDateString("pt-BR", {
@@ -97,6 +101,20 @@ export default async function StatsPage({ searchParams }: StatsPageProps) {
                 : "0"
             } / dia ativo`}
             accent="#f472b6"
+          />
+        </section>
+
+        <section>
+          <WritingCard
+            data={contentStats.writingByDay}
+            totals={{
+              totalTopics: contentStats.totalTopics,
+              topicsWithContent: contentStats.topicsWithContent,
+              topicsTouched: contentStats.topicsTouched,
+              totalNotes: contentStats.totalNotes,
+              notesWithContent: contentStats.notesWithContent,
+              notesTouched: contentStats.notesTouched,
+            }}
           />
         </section>
       </div>

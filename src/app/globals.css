@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "katex/dist/katex.min.css";
 
 @custom-variant dark (&:where(.dark, .dark *));
 
@@ -237,6 +238,52 @@
     float: left;
     height: 0;
     pointer-events: none;
+  }
+  .prose-tiptap img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 0.5rem;
+    margin: 0.5rem 0;
+  }
+  .prose-tiptap .tiptap-table {
+    border-collapse: collapse;
+    margin: 1rem 0;
+    overflow: hidden;
+    table-layout: fixed;
+    width: 100%;
+  }
+  .prose-tiptap .tiptap-table td,
+  .prose-tiptap .tiptap-table th {
+    border: 1px solid var(--color-border);
+    padding: 0.5rem 0.75rem;
+    position: relative;
+    vertical-align: top;
+    min-width: 60px;
+  }
+  .prose-tiptap .tiptap-table th {
+    background-color: var(--color-secondary);
+    font-weight: 600;
+    text-align: left;
+  }
+  .prose-tiptap .tiptap-table .selectedCell:after {
+    background-color: color-mix(in oklch, var(--color-primary) 15%, transparent);
+    content: "";
+    inset: 0;
+    pointer-events: none;
+    position: absolute;
+    z-index: 2;
+  }
+  .prose-tiptap .tiptap-table .column-resize-handle {
+    background-color: var(--color-ring);
+    bottom: -2px;
+    pointer-events: none;
+    position: absolute;
+    right: -2px;
+    top: 0;
+    width: 4px;
+  }
+  .prose-tiptap .katex-display {
+    margin: 0;
   }
 }
 

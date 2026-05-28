@@ -5,13 +5,9 @@ import { useRouter } from "next/navigation";
 import { Loader2, Plus, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { createSummary } from "@/features/summaries/actions";
+import { createNote } from "@/features/notes/actions";
 
-interface NewSummaryFormProps {
-  subjectId: string;
-}
-
-export function NewSummaryForm({ subjectId }: NewSummaryFormProps) {
+export function NewNoteForm() {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
   const [title, setTitle] = React.useState("");
@@ -23,12 +19,12 @@ export function NewSummaryForm({ subjectId }: NewSummaryFormProps) {
     if (!title.trim()) return setError("Título obrigatório.");
     setSubmitting(true);
     setError(null);
-    const result = await createSummary({ subjectId, title });
+    const result = await createNote({ title });
     setSubmitting(false);
     if (result.ok) {
       setOpen(false);
       setTitle("");
-      router.push(`/subjects/${subjectId}/summary/${result.id}`);
+      router.push(`/notes/${result.id}`);
     } else {
       setError(result.error);
     }
@@ -36,13 +32,9 @@ export function NewSummaryForm({ subjectId }: NewSummaryFormProps) {
 
   if (!open) {
     return (
-      <Button
-        onClick={() => setOpen(true)}
-        size="sm"
-        className="gap-1.5"
-      >
+      <Button onClick={() => setOpen(true)} className="gap-1.5">
         <Plus className="size-3.5" />
-        Novo resumo
+        Nova nota
       </Button>
     );
   }
@@ -55,7 +47,7 @@ export function NewSummaryForm({ subjectId }: NewSummaryFormProps) {
           autoFocus
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          placeholder="Título do resumo"
+          placeholder="Título da nota"
           maxLength={120}
           className="h-9 w-full rounded-md border border-[var(--color-border)] bg-[var(--color-background)] px-3 text-sm outline-none transition-colors focus:border-[var(--color-ring)]"
         />
