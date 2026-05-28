@@ -1,4 +1,5 @@
-import { Clock, Flame, Focus, Timer as TimerIcon } from "lucide-react";
+import Link from "next/link";
+import { Clock, Flame, Repeat, Timer as TimerIcon } from "lucide-react";
 
 import { Header } from "@/components/layout/header";
 import { StatCard } from "@/components/dashboard/stat-card";
@@ -57,17 +58,19 @@ export default async function DashboardPage() {
             hint="dias consecutivos"
             accent="#fb923c"
           />
-          <StatCard
-            label="Foco médio"
-            value={
-              data.today.focusPercentage > 0
-                ? `${data.today.focusPercentage}%`
-                : "—"
-            }
-            icon={Focus}
-            hint="sessões de hoje"
-            accent="#34d399"
-          />
+          <Link href="/reviews" className="group">
+            <StatCard
+              label="Revisões hoje"
+              value={`${data.reviews.today + data.reviews.flashcardsDue}`}
+              icon={Repeat}
+              hint={
+                data.reviews.today + data.reviews.flashcardsDue === 0
+                  ? "tudo em dia"
+                  : `${data.reviews.today} revisões · ${data.reviews.flashcardsDue} flashcards`
+              }
+              accent="#34d399"
+            />
+          </Link>
         </section>
 
         <section className="grid grid-cols-1 gap-4 lg:grid-cols-3">

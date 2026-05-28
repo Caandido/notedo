@@ -17,8 +17,10 @@ export async function getDashboardData() {
   const userId = await getCurrentUserId();
 
   const today = startOfDay();
+  const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
   const weekStart = daysAgo(6);
   const heatmapStart = daysAgo(89);
+  const now = new Date();
 
   const [
     subjects,
@@ -27,6 +29,8 @@ export async function getDashboardData() {
     weekSessions,
     recentSessions,
     heatmapSessions,
+    reviewsToday,
+    flashcardsDue,
   ] = await Promise.all([
     prisma.subject.findMany({
       where: { userId, archived: false },
@@ -59,6 +63,16 @@ export async function getDashboardData() {
     prisma.studySession.findMany({
       where: { userId, startedAt: { gte: heatmapStart } },
       select: { durationSeconds: true, startedAt: true },
+    }),
+    prisma.review.count({
+      where: {
+        userId,
+        status: "PENDING",
+        scheduledAt: { lt: tomorrow },
+      },
+    }),
+    prisma.flashcard.count({
+      where: { userId, nextReview: { lte: now } },
     }),
   ]);
 
@@ -162,6 +176,10 @@ export async function getDashboardData() {
     },
     week: {
       studiedSeconds: weekSeconds,
+    },
+    reviews: {
+      today: reviewsToday,
+      flashcardsDue,
     },
     subjects: subjectsView,
     goals: goalsView,
@@ -281,3 +299,93 @@ export async function getGoalsWithProgress() {
 }
 
 export type GoalView = Awaited<ReturnType<typeof getGoalsWithProgress>>[number];
+
+export async function getReviewsForUser() {
+  const userId = await getCurrentUserId();
+
+  const today = startOfDay();
+  const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
+
+  const reviews = await prisma.review.findMany({
+    where: { userId, status: "PENDING" },
+    orderBy: { scheduledAt: "asc" },
+    include: {
+      subject: { select: { name: true, color: true } },
+    },
+    take: 100,
+  });
+
+  const view = reviews.map((r) => ({
+    id: r.id,
+    title: r.title,
+    subjectName: r.subject?.name ?? null,
+    subjectColor: r.subject?.color ?? null,
+    scheduledAt: r.scheduledAt,
+    interval: r.interval,
+  }));
+
+  const overdue = view.filter((r) => r.scheduledAt < today);
+  const todayList = view.filter(
+    (r) => r.scheduledAt >= today && r.scheduledAt < tomorrow
+  );
+  const upcoming = view.filter((r) => r.scheduledAt >= tomorrow);
+
+  return { overdue, today: todayList, upcoming };
+}
+
+export type ReviewsView = Awaited<ReturnType<typeof getReviewsForUser>>;
+
+export async function getFlashcardDecks() {
+  const userId = await getCurrentUserId();
+  const now = new Date();
+
+  const cards = await prisma.flashcard.findMany({
+    where: { userId },
+    select: { deck: true, nextReview: true },
+  });
+
+  const map = new Map<string, { total: number; due: number }>();
+  for (const c of cards) {
+    const deck = c.deck ?? "Sem deck";
+    const entry = map.get(deck) ?? { total: 0, due: 0 };
+    entry.total += 1;
+    if (c.nextReview <= now) entry.due += 1;
+    map.set(deck, entry);
+  }
+
+  return Array.from(map.entries())
+    .map(([deck, v]) => ({ deck, total: v.total, due: v.due }))
+    .sort((a, b) => b.due - a.due || a.deck.localeCompare(b.deck));
+}
+
+export type DeckView = Awaited<ReturnType<typeof getFlashcardDecks>>[number];
+
+export async function getDueFlashcards(deckName?: string) {
+  const userId = await getCurrentUserId();
+  const now = new Date();
+
+  const cards = await prisma.flashcard.findMany({
+    where: {
+      userId,
+      nextReview: { lte: now },
+      ...(deckName ? { deck: deckName } : {}),
+    },
+    take: 50,
+  });
+
+  for (let i = cards.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [cards[i], cards[j]] = [cards[j], cards[i]];
+  }
+
+  return cards.map((c) => ({
+    id: c.id,
+    front: c.front,
+    back: c.back,
+    deck: c.deck,
+    ease: c.ease,
+    interval: c.interval,
+  }));
+}
+
+export type DueCard = Awaited<ReturnType<typeof getDueFlashcards>>[number];
