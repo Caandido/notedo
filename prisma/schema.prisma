@@ -1,0 +1,166 @@
+// Notedo schema
+// docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  image     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  subjects Subject[]
+  sessions StudySession[]
+  goals    Goal[]
+  reviews  Review[]
+  flashcards Flashcard[]
+}
+
+model Subject {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  color     String   @default("#a78bfa")
+  icon      String?
+  priority  Priority @default(MEDIUM)
+  progress  Int      @default(0)
+  tags      String[]
+  archived  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  topics   Topic[]
+  sessions StudySession[]
+  reviews  Review[]
+
+  @@index([userId])
+}
+
+model Topic {
+  id        String   @id @default(cuid())
+  subjectId String
+  subject   Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  parentId  String?
+  parent    Topic?   @relation("TopicHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children  Topic[]  @relation("TopicHierarchy")
+  title     String
+  notes     String?
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sessions StudySession[]
+
+  @@index([subjectId])
+  @@index([parentId])
+}
+
+model StudySession {
+  id              String      @id @default(cuid())
+  userId          String
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subjectId       String?
+  subject         Subject?    @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  topicId         String?
+  topic           Topic?      @relation(fields: [topicId], references: [id], onDelete: SetNull)
+  mode            TimerMode   @default(POMODORO)
+  startedAt       DateTime    @default(now())
+  endedAt         DateTime?
+  durationSeconds Int         @default(0)
+  notes           String?
+  focusScore      Int?
+  createdAt       DateTime    @default(now())
+
+  @@index([userId, startedAt])
+  @@index([subjectId])
+}
+
+model Goal {
+  id        String     @id @default(cuid())
+  userId    String
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      GoalType
+  metric    GoalMetric
+  target    Float
+  label     String
+  active    Boolean    @default(true)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@index([userId])
+}
+
+model Review {
+  id          String     @id @default(cuid())
+  userId      String
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subjectId   String?
+  subject     Subject?   @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  title       String
+  scheduledAt DateTime
+  completedAt DateTime?
+  interval    Int        @default(1)
+  ease        Float      @default(2.5)
+  status      ReviewStatus @default(PENDING)
+  createdAt   DateTime   @default(now())
+
+  @@index([userId, scheduledAt])
+}
+
+model Flashcard {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  front     String
+  back      String
+  deck      String?
+  ease      Float    @default(2.5)
+  interval  Int      @default(1)
+  nextReview DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  @@index([userId, nextReview])
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum TimerMode {
+  POMODORO
+  FREE
+  REVERSE
+  CUSTOM
+}
+
+enum GoalType {
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
+enum GoalMetric {
+  HOURS
+  TASKS
+  SESSIONS
+  REVIEWS
+}
+
+enum ReviewStatus {
+  PENDING
+  COMPLETED
+  SKIPPED
+}
