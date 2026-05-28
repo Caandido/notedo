@@ -1,0 +1,193 @@
+import { prisma } from "@/lib/prisma";
+
+const DEMO_EMAIL = "demo@notedo.app";
+
+async function getDemoUserId(): Promise<string> {
+  const user = await prisma.user.upsert({
+    where: { email: DEMO_EMAIL },
+    update: {},
+    create: { email: DEMO_EMAIL, name: "Usuário Demo" },
+  });
+  return user.id;
+}
+
+function startOfDay(d: Date = new Date()): Date {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
+
+function daysAgo(n: number): Date {
+  const d = startOfDay();
+  d.setDate(d.getDate() - n);
+  return d;
+}
+
+export async function getDashboardData() {
+  const userId = await getDemoUserId();
+
+  const today = startOfDay();
+  const weekStart = daysAgo(6);
+  const heatmapStart = daysAgo(89);
+
+  const [
+    subjects,
+    goals,
+    todaySessions,
+    weekSessions,
+    recentSessions,
+    heatmapSessions,
+  ] = await Promise.all([
+    prisma.subject.findMany({
+      where: { userId, archived: false },
+      orderBy: { updatedAt: "desc" },
+      include: {
+        sessions: { select: { durationSeconds: true } },
+      },
+      take: 6,
+    }),
+    prisma.goal.findMany({
+      where: { userId, active: true },
+      orderBy: { createdAt: "asc" },
+    }),
+    prisma.studySession.findMany({
+      where: { userId, startedAt: { gte: today } },
+      select: { durationSeconds: true, focusScore: true },
+    }),
+    prisma.studySession.findMany({
+      where: { userId, startedAt: { gte: weekStart } },
+      select: { durationSeconds: true, startedAt: true },
+    }),
+    prisma.studySession.findMany({
+      where: { userId },
+      orderBy: { startedAt: "desc" },
+      take: 6,
+      include: {
+        subject: { select: { name: true, color: true } },
+      },
+    }),
+    prisma.studySession.findMany({
+      where: { userId, startedAt: { gte: heatmapStart } },
+      select: { durationSeconds: true, startedAt: true },
+    }),
+  ]);
+
+  const subjectsView = subjects.map((s) => ({
+    id: s.id,
+    name: s.name,
+    color: s.color,
+    progress: s.progress,
+    totalSeconds: s.sessions.reduce((acc, x) => acc + x.durationSeconds, 0),
+  }));
+
+  const todaySeconds = todaySessions.reduce(
+    (acc, s) => acc + s.durationSeconds,
+    0
+  );
+  const focusScores = todaySessions
+    .map((s) => s.focusScore)
+    .filter((x): x is number => x != null);
+  const focusAvg =
+    focusScores.length > 0
+      ? Math.round(focusScores.reduce((a, b) => a + b, 0) / focusScores.length)
+      : 0;
+
+  const weekSeconds = weekSessions.reduce(
+    (acc, s) => acc + s.durationSeconds,
+    0
+  );
+
+  const dayLabels = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+  const last7 = Array.from({ length: 7 }, (_, i) => {
+    const d = daysAgo(6 - i);
+    const seconds = weekSessions
+      .filter((s) => {
+        const sd = new Date(s.startedAt);
+        return (
+          sd.getFullYear() === d.getFullYear() &&
+          sd.getMonth() === d.getMonth() &&
+          sd.getDate() === d.getDate()
+        );
+      })
+      .reduce((acc, s) => acc + s.durationSeconds, 0);
+    return {
+      day: dayLabels[d.getDay()],
+      hours: +(seconds / 3600).toFixed(1),
+    };
+  });
+
+  const heatmapMap = new Map<string, number>();
+  heatmapSessions.forEach((s) => {
+    const key = new Date(s.startedAt).toISOString().slice(0, 10);
+    heatmapMap.set(key, (heatmapMap.get(key) ?? 0) + s.durationSeconds);
+  });
+  const heatmap = Array.from({ length: 90 }, (_, i) => {
+    const d = daysAgo(89 - i);
+    const key = d.toISOString().slice(0, 10);
+    return { date: key, seconds: heatmapMap.get(key) ?? 0 };
+  });
+
+  const streak = computeStreak(heatmap);
+
+  const sessionsView = recentSessions.map((s) => ({
+    id: s.id,
+    subjectId: s.subjectId ?? "—",
+    subjectName: s.subject?.name ?? "Sem matéria",
+    subjectColor: s.subject?.color ?? "#71717a",
+    startedAt: s.startedAt,
+    endedAt: s.endedAt,
+    durationSeconds: s.durationSeconds,
+    mode: s.mode.toLowerCase() as "pomodoro" | "free" | "reverse" | "custom",
+  }));
+
+  const goalsView = goals.map((g) => {
+    let current = 0;
+    if (g.type === "DAILY") {
+      if (g.metric === "HOURS") current = +(todaySeconds / 3600).toFixed(2);
+      else if (g.metric === "SESSIONS") current = todaySessions.length;
+    } else if (g.type === "WEEKLY") {
+      if (g.metric === "HOURS") current = +(weekSeconds / 3600).toFixed(2);
+      else if (g.metric === "SESSIONS") current = weekSessions.length;
+    }
+    return {
+      id: g.id,
+      label: g.label,
+      target: g.target,
+      current,
+      type: g.type.toLowerCase() as "daily" | "weekly" | "monthly",
+      metric: g.metric.toLowerCase() as
+        | "hours"
+        | "tasks"
+        | "sessions"
+        | "reviews",
+    };
+  });
+
+  return {
+    today: {
+      studiedSeconds: todaySeconds,
+      sessions: todaySessions.length,
+      focusPercentage: focusAvg,
+      streak,
+    },
+    week: {
+      studiedSeconds: weekSeconds,
+    },
+    subjects: subjectsView,
+    goals: goalsView,
+    sessions: sessionsView,
+    weekly: last7,
+    heatmap,
+  };
+}
+
+function computeStreak(heatmap: { date: string; seconds: number }[]): number {
+  let streak = 0;
+  for (let i = heatmap.length - 1; i >= 0; i--) {
+    if (heatmap[i].seconds > 0) streak++;
+    else break;
+  }
+  return streak;
+}
+
+export type DashboardData = Awaited<ReturnType<typeof getDashboardData>>;

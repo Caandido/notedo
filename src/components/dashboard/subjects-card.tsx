@@ -4,10 +4,17 @@ import { ArrowUpRight, BookOpen } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { formatHours } from "@/lib/utils";
-import type { Subject } from "@/types";
+
+interface SubjectView {
+  id: string;
+  name: string;
+  color: string;
+  progress: number;
+  totalSeconds: number;
+}
 
 interface SubjectsCardProps {
-  subjects: Subject[];
+  subjects: SubjectView[];
 }
 
 export function SubjectsCard({ subjects }: SubjectsCardProps) {

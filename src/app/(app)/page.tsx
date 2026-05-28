@@ -8,15 +8,9 @@ import { SessionsCard } from "@/components/dashboard/sessions-card";
 import { WeeklyChart } from "@/components/dashboard/weekly-chart";
 import { Heatmap } from "@/components/dashboard/heatmap";
 import { formatDuration } from "@/lib/utils";
-import {
-  dailyHoursLast7Days,
-  generateHeatmap,
-  mockGoals,
-  mockSessions,
-  mockSubjects,
-  todayStats,
-  weekStats,
-} from "@/lib/mock-data";
+import { getDashboardData } from "@/lib/queries";
+
+export const dynamic = "force-dynamic";
 
 function greeting(): string {
   const h = new Date().getHours();
@@ -26,9 +20,8 @@ function greeting(): string {
   return "Boa noite";
 }
 
-export default function DashboardPage() {
-  const weeklyData = dailyHoursLast7Days();
-  const heatmapData = generateHeatmap();
+export default async function DashboardPage() {
+  const data = await getDashboardData();
 
   return (
     <>
@@ -45,53 +38,54 @@ export default function DashboardPage() {
         <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <StatCard
             label="Hoje"
-            value={formatDuration(todayStats.studiedSeconds)}
+            value={formatDuration(data.today.studiedSeconds)}
             icon={Clock}
-            trend={12}
-            hint="vs ontem"
+            hint={`${data.today.sessions} sessões`}
             accent="#a78bfa"
           />
           <StatCard
             label="Esta semana"
-            value={formatDuration(weekStats.studiedSeconds)}
+            value={formatDuration(data.week.studiedSeconds)}
             icon={TimerIcon}
-            trend={-4}
-            hint="vs semana passada"
+            hint="últimos 7 dias"
             accent="#60a5fa"
           />
           <StatCard
             label="Streak"
-            value={`${todayStats.streak} dias`}
+            value={`${data.today.streak} ${data.today.streak === 1 ? "dia" : "dias"}`}
             icon={Flame}
-            hint="recorde: 21"
+            hint="dias consecutivos"
             accent="#fb923c"
           />
           <StatCard
             label="Foco médio"
-            value={`${todayStats.focusPercentage}%`}
+            value={
+              data.today.focusPercentage > 0
+                ? `${data.today.focusPercentage}%`
+                : "—"
+            }
             icon={Focus}
-            trend={3}
-            hint="últimos 7 dias"
+            hint="sessões de hoje"
             accent="#34d399"
           />
         </section>
 
         <section className="grid grid-cols-1 gap-4 lg:grid-cols-3">
           <div className="lg:col-span-2">
-            <WeeklyChart data={weeklyData} />
+            <WeeklyChart data={data.weekly} />
           </div>
-          <GoalsCard goals={mockGoals} />
+          <GoalsCard goals={data.goals} />
         </section>
 
         <section className="grid grid-cols-1 gap-4 lg:grid-cols-3">
           <div className="lg:col-span-2">
-            <Heatmap data={heatmapData} />
+            <Heatmap data={data.heatmap} />
           </div>
-          <SubjectsCard subjects={mockSubjects} />
+          <SubjectsCard subjects={data.subjects} />
         </section>
 
         <section>
-          <SessionsCard sessions={mockSessions} />
+          <SessionsCard sessions={data.sessions} />
         </section>
       </div>
     </>
