@@ -28,6 +28,7 @@ model User {
   goals      Goal[]
   reviews    Review[]
   flashcards Flashcard[]
+  events     CalendarEvent[]
 }
 
 model Account {
@@ -83,9 +84,11 @@ model Subject {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  topics   Topic[]
-  sessions StudySession[]
-  reviews  Review[]
+  topics    Topic[]
+  sessions  StudySession[]
+  reviews   Review[]
+  events    CalendarEvent[]
+  summaries Summary[]
 
   @@index([userId])
 }
@@ -206,4 +209,41 @@ enum ReviewStatus {
   PENDING
   COMPLETED
   SKIPPED
+}
+
+enum EventType {
+  EXAM
+  TASK
+  CLASS
+  CUSTOM
+}
+
+model CalendarEvent {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subjectId String?
+  subject   Subject?  @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  type      EventType @default(CUSTOM)
+  title     String
+  notes     String?
+  date      DateTime
+  done      Boolean   @default(false)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([userId, date])
+  @@index([subjectId])
+}
+
+model Summary {
+  id        String   @id @default(cuid())
+  subjectId String
+  subject   Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  title     String
+  content   Json     @default("{}")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([subjectId])
 }

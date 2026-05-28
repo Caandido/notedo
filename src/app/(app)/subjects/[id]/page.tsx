@@ -3,6 +3,7 @@ import Link from "next/link";
 import {
   ArrowLeft,
   Clock,
+  FileText,
   History,
   Layers,
   Timer as TimerIcon,
@@ -15,8 +16,10 @@ import { Badge } from "@/components/ui/badge";
 import { TopicTree } from "@/components/subjects/topic-tree";
 import { NewTopicForm } from "@/components/subjects/new-topic-form";
 import { EditSubjectForm } from "@/components/subjects/edit-subject-form";
+import { NewSummaryForm } from "@/components/summaries/new-summary-form";
+import { SummaryRow } from "@/components/summaries/summary-row";
 import { formatDuration, formatHours } from "@/lib/utils";
-import { getSubjectDetail } from "@/lib/queries";
+import { getSubjectDetail, getSummariesForSubject } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -52,7 +55,10 @@ export default async function SubjectDetailPage({
   params,
 }: SubjectDetailPageProps) {
   const { id } = await params;
-  const detail = await getSubjectDetail(id);
+  const [detail, summaries] = await Promise.all([
+    getSubjectDetail(id),
+    getSummariesForSubject(id),
+  ]);
   if (!detail) notFound();
 
   const { subject, topics, topicCount, totalSeconds, sessionCount, recentSessions } =
@@ -151,6 +157,36 @@ export default async function SubjectDetailPage({
             </CardContent>
           </Card>
         </section>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="flex items-center gap-2 text-sm">
+              <FileText className="size-4 text-[var(--color-muted-foreground)]" />
+              Resumos
+              {summaries.length > 0 && (
+                <Badge variant="outline" className="text-[10px]">
+                  {summaries.length}
+                </Badge>
+              )}
+            </CardTitle>
+            <NewSummaryForm subjectId={subject.id} />
+          </CardHeader>
+          <CardContent>
+            {summaries.length === 0 ? (
+              <p className="text-sm text-[var(--color-muted-foreground)]">
+                Nenhum resumo ainda. Crie seu primeiro para fixar conceitos.
+              </p>
+            ) : (
+              <ul className="space-y-2">
+                {summaries.map((s) => (
+                  <li key={s.id}>
+                    <SummaryRow summary={s} subjectId={subject.id} />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">

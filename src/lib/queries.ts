@@ -597,7 +597,7 @@ export async function getCalendarMonth(year: number, month: number) {
   const monthStart = new Date(year, month, 1, 0, 0, 0, 0);
   const monthEnd = new Date(year, month + 1, 1, 0, 0, 0, 0);
 
-  const [sessions, reviews] = await Promise.all([
+  const [sessions, reviews, events] = await Promise.all([
     prisma.studySession.findMany({
       where: { userId, startedAt: { gte: monthStart, lt: monthEnd } },
       select: {
@@ -621,6 +621,13 @@ export async function getCalendarMonth(year: number, month: number) {
         subject: { select: { name: true, color: true } },
       },
     }),
+    prisma.calendarEvent.findMany({
+      where: { userId, date: { gte: monthStart, lt: monthEnd } },
+      orderBy: { date: "asc" },
+      include: {
+        subject: { select: { id: true, name: true, color: true } },
+      },
+    }),
   ]);
 
   function dayKey(d: Date): string {
@@ -629,14 +636,6 @@ export async function getCalendarMonth(year: number, month: number) {
     const day = d.getDate().toString().padStart(2, "0");
     return `${y}-${m}-${day}`;
   }
-
-  type DayCell = {
-    key: string;
-    date: Date;
-    seconds: number;
-    sessions: typeof sessionsView;
-    reviews: typeof reviewsView;
-  };
 
   const sessionsView = sessions.map((s) => ({
     id: s.id,
@@ -656,6 +655,27 @@ export async function getCalendarMonth(year: number, month: number) {
     subjectColor: r.subject?.color ?? null,
   }));
 
+  const eventsView = events.map((e) => ({
+    id: e.id,
+    title: e.title,
+    type: e.type.toLowerCase() as "exam" | "task" | "class" | "custom",
+    date: e.date,
+    done: e.done,
+    notes: e.notes,
+    subjectId: e.subject?.id ?? null,
+    subjectName: e.subject?.name ?? null,
+    subjectColor: e.subject?.color ?? null,
+  }));
+
+  type DayCell = {
+    key: string;
+    date: Date;
+    seconds: number;
+    sessions: typeof sessionsView;
+    reviews: typeof reviewsView;
+    events: typeof eventsView;
+  };
+
   const days: DayCell[] = [];
   const cursor = new Date(monthStart);
   while (cursor < monthEnd) {
@@ -666,6 +686,7 @@ export async function getCalendarMonth(year: number, month: number) {
       seconds: 0,
       sessions: [],
       reviews: [],
+      events: [],
     });
     cursor.setDate(cursor.getDate() + 1);
   }
@@ -685,6 +706,11 @@ export async function getCalendarMonth(year: number, month: number) {
     if (cell) cell.reviews.push(r);
   });
 
+  eventsView.forEach((e) => {
+    const cell = byKey.get(dayKey(new Date(e.date)));
+    if (cell) cell.events.push(e);
+  });
+
   const totalSeconds = days.reduce((a, d) => a + d.seconds, 0);
   const activeDays = days.filter((d) => d.seconds > 0).length;
 
@@ -697,6 +723,7 @@ export async function getCalendarMonth(year: number, month: number) {
     activeDays,
     sessionCount: sessions.length,
     reviewCount: reviews.length,
+    eventCount: events.length,
   };
 }
 
@@ -807,6 +834,60 @@ async function collectDescendantIds(rootId: string): Promise<string[]> {
 }
 
 export type TopicDetail = Awaited<ReturnType<typeof getTopicDetail>>;
+
+export async function getEventsForRange(start: Date, end: Date) {
+  const userId = await getCurrentUserId();
+  const events = await prisma.calendarEvent.findMany({
+    where: { userId, date: { gte: start, lt: end } },
+    orderBy: { date: "asc" },
+    include: {
+      subject: { select: { id: true, name: true, color: true } },
+    },
+  });
+  return events.map((e) => ({
+    id: e.id,
+    title: e.title,
+    type: e.type.toLowerCase() as "exam" | "task" | "class" | "custom",
+    date: e.date,
+    done: e.done,
+    notes: e.notes,
+    subjectId: e.subject?.id ?? null,
+    subjectName: e.subject?.name ?? null,
+    subjectColor: e.subject?.color ?? null,
+  }));
+}
+
+export type EventView = Awaited<ReturnType<typeof getEventsForRange>>[number];
+
+export async function getSummariesForSubject(subjectId: string) {
+  const userId = await getCurrentUserId();
+  const owned = await prisma.subject.findFirst({
+    where: { id: subjectId, userId },
+    select: { id: true },
+  });
+  if (!owned) return [];
+
+  return prisma.summary.findMany({
+    where: { subjectId },
+    orderBy: { updatedAt: "desc" },
+    select: {
+      id: true,
+      title: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  });
+}
+
+export async function getSummaryById(summaryId: string) {
+  const userId = await getCurrentUserId();
+  return prisma.summary.findFirst({
+    where: { id: summaryId, subject: { userId } },
+    include: {
+      subject: { select: { id: true, name: true, color: true } },
+    },
+  });
+}
 
 export async function getProfileSummary() {
   const userId = await getCurrentUserId();

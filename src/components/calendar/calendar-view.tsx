@@ -9,6 +9,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { cn, formatDuration } from "@/lib/utils";
+import { NewEventForm } from "@/components/calendar/new-event-form";
+import { EventItem } from "@/components/calendar/event-item";
+import {
+  EVENT_COLORS,
+  type EventType,
+} from "@/components/calendar/event-styles";
 
 type Session = {
   id: string;
@@ -28,18 +34,34 @@ type Review = {
   subjectColor: string | null;
 };
 
+type CalEvent = {
+  id: string;
+  title: string;
+  type: EventType;
+  date: Date | string;
+  done: boolean;
+  notes: string | null;
+  subjectId: string | null;
+  subjectName: string | null;
+  subjectColor: string | null;
+};
+
 type DayCell = {
   key: string;
   date: Date | string;
   seconds: number;
   sessions: Session[];
   reviews: Review[];
+  events: CalEvent[];
 };
+
+type SubjectOption = { id: string; name: string; color: string };
 
 interface CalendarViewProps {
   year: number;
   month: number;
   days: DayCell[];
+  subjects: SubjectOption[];
 }
 
 const MONTH_NAMES = [
@@ -84,7 +106,18 @@ function isSameDay(a: Date, b: Date) {
   );
 }
 
-export function CalendarView({ year, month, days }: CalendarViewProps) {
+function toIsoDate(d: Date): string {
+  const local = new Date(d);
+  local.setMinutes(local.getMinutes() - local.getTimezoneOffset());
+  return local.toISOString().slice(0, 10);
+}
+
+export function CalendarView({
+  year,
+  month,
+  days,
+  subjects,
+}: CalendarViewProps) {
   const pathname = usePathname();
   const params = useSearchParams();
   const [selectedKey, setSelectedKey] = React.useState<string | null>(
@@ -138,6 +171,12 @@ export function CalendarView({ year, month, days }: CalendarViewProps) {
         </h2>
       </div>
 
+      <NewEventForm
+        subjects={subjects}
+        defaultDate={selected ? toIsoDate(new Date(selected.date)) : undefined}
+        size="sm"
+      />
+
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardContent className="p-4">
@@ -189,6 +228,22 @@ export function CalendarView({ year, month, days }: CalendarViewProps) {
                         title={`${dueReviews} revisão${dueReviews === 1 ? "" : "ões"} agendada${dueReviews === 1 ? "" : "s"}`}
                       />
                     )}
+                    {d.events.length > 0 && (
+                      <div className="absolute bottom-1 left-1 flex gap-0.5">
+                        {Array.from(new Set(d.events.map((e) => e.type)))
+                          .slice(0, 4)
+                          .map((t) => (
+                            <span
+                              key={t}
+                              className={cn(
+                                "size-1.5 rounded-full",
+                                EVENT_COLORS[t].dot
+                              )}
+                              title={t}
+                            />
+                          ))}
+                      </div>
+                    )}
                   </button>
                 );
               })}
@@ -220,6 +275,19 @@ export function CalendarView({ year, month, days }: CalendarViewProps) {
                     )}
                   </p>
                 </div>
+
+                {selected.events.length > 0 && (
+                  <div className="space-y-1.5">
+                    <p className="text-[10px] font-medium uppercase tracking-wider text-[var(--color-muted-foreground)]">
+                      Eventos
+                    </p>
+                    <ul className="space-y-1.5">
+                      {selected.events.map((e) => (
+                        <EventItem key={e.id} event={e} />
+                      ))}
+                    </ul>
+                  </div>
+                )}
 
                 {selected.reviews.length > 0 && (
                   <div className="space-y-1.5">
@@ -285,7 +353,8 @@ export function CalendarView({ year, month, days }: CalendarViewProps) {
                 )}
 
                 {selected.sessions.length === 0 &&
-                  selected.reviews.length === 0 && (
+                  selected.reviews.length === 0 &&
+                  selected.events.length === 0 && (
                     <p className="text-xs text-[var(--color-muted-foreground)]">
                       Nada registrado neste dia.
                     </p>

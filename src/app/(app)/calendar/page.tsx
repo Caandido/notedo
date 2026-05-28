@@ -1,7 +1,7 @@
 import { Header } from "@/components/layout/header";
 import { CalendarView } from "@/components/calendar/calendar-view";
 import { formatHours } from "@/lib/utils";
-import { getCalendarMonth } from "@/lib/queries";
+import { getCalendarMonth, getSubjectsForUser } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -25,16 +25,28 @@ export default async function CalendarPage({
   const monthRaw = parseInt0(params.m, now.getMonth());
   const month = Math.max(0, Math.min(11, monthRaw));
 
-  const data = await getCalendarMonth(year, month);
+  const [data, subjects] = await Promise.all([
+    getCalendarMonth(year, month),
+    getSubjectsForUser(),
+  ]);
 
   return (
     <>
       <Header
         title="Calendário"
-        subtitle={`${formatHours(data.totalSeconds)} em ${data.activeDays} dia${data.activeDays === 1 ? "" : "s"} ativo${data.activeDays === 1 ? "" : "s"} · ${data.sessionCount} sessões · ${data.reviewCount} revisões`}
+        subtitle={`${formatHours(data.totalSeconds)} em ${data.activeDays} dia${data.activeDays === 1 ? "" : "s"} ativo${data.activeDays === 1 ? "" : "s"} · ${data.sessionCount} sessões · ${data.reviewCount} revisões · ${data.eventCount} eventos`}
       />
       <div className="p-6">
-        <CalendarView year={year} month={month} days={data.days} />
+        <CalendarView
+          year={year}
+          month={month}
+          days={data.days}
+          subjects={subjects.map((s) => ({
+            id: s.id,
+            name: s.name,
+            color: s.color,
+          }))}
+        />
       </div>
     </>
   );
