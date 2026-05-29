@@ -34,9 +34,16 @@ export async function createTopic(input: CreateTopicInput) {
       return { ok: false as const, error: "Tópico pai não encontrado." };
   }
 
-  const siblingCount = await db()
-    .topics.where({ subjectId: input.subjectId, parentId: input.parentId ?? null })
-    .count();
+  // Conta irmãos filtrando em memória: o IndexedDB não aceita `null` numa chave
+  // composta ([subjectId+parentId]), então tópicos de raiz (parentId null) dariam
+  // DataError em `.where({ ..., parentId: null })`.
+  const parentId = input.parentId ?? null;
+  const siblings = await db()
+    .topics.where("subjectId")
+    .equals(input.subjectId)
+    .toArray();
+  const siblingCount = siblings.filter((t) => (t.parentId ?? null) === parentId)
+    .length;
 
   const now = Date.now();
   const id = cuid();

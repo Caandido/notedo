@@ -37,13 +37,18 @@ export function NewTopicForm({
     if (!title.trim()) return setError("Título obrigatório.");
     setSubmitting(true);
     setError(null);
-    const result = await createTopic({ subjectId, parentId, title });
-    setSubmitting(false);
-    if (result.ok) {
-      close();
-      router.refresh();
-    } else {
-      setError(result.error);
+    try {
+      const result = await createTopic({ subjectId, parentId, title });
+      if (result.ok) {
+        close();
+        router.refresh();
+      } else {
+        setError(result.error);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Falha ao criar tópico.");
+    } finally {
+      setSubmitting(false);
     }
   }
 
