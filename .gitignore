@@ -26,9 +26,10 @@
 *.keystore
 *.jks
 
-# tauri (windows)
+# tauri (windows) — target/gen/icons são gerados no CI; app-icon.png (fonte) é commitado
 /src-tauri/target/
 /src-tauri/gen/
+/src-tauri/icons/
 
 # production
 /build
