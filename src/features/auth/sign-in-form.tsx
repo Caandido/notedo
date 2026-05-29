@@ -5,6 +5,7 @@ import { Loader2, Mail } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { supabase, redirectUrl, isNative } from "@/lib/sync/client";
+import { openOAuthUrl } from "@/lib/sync/native-auth";
 
 const inputCls =
   "w-full rounded-md border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2 text-sm outline-none transition-colors focus:border-[var(--color-ring)] focus:ring-2 focus:ring-[var(--color-ring)]/40";
@@ -79,12 +80,14 @@ export function SignInForm() {
     setBusy(true);
     setMsg(null);
     try {
-      const { error } = await supabase().auth.signInWithOAuth({
+      const { data, error } = await supabase().auth.signInWithOAuth({
         provider,
         options: { redirectTo: redirectUrl(), skipBrowserRedirect: isNative },
       });
       if (error) throw error;
-      // Web: redireciona a página inteira. Nativo (Fase 6) abrirá o browser.
+      // Web: o supabase-js já redirecionou a página. Nativo: abrimos o browser
+      // com a URL retornada; o retorno cai no listener de deep link.
+      if (isNative && data?.url) await openOAuthUrl(data.url);
     } catch (err) {
       setMsg({ type: "error", text: friendly(err) });
       setBusy(false);

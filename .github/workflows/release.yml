@@ -97,6 +97,9 @@ jobs:
       - name: Add Android platform
         run: npx cap add android
 
+      - name: Patch AndroidManifest (deep link OAuth)
+        run: node scripts/patch-android-manifest.mjs
+
       - name: Generate Android icons
         run: npx @capacitor/assets generate --android --iconBackgroundColor "#0a0a0b" --iconBackgroundColorDark "#0a0a0b"
 

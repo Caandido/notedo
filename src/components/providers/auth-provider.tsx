@@ -69,6 +69,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setStatus("anon");
       return;
     }
+    // Registra o listener de deep link OAuth no nativo (no-op no web).
+    void import("@/lib/sync/native-auth")
+      .then((m) => m.initNativeAuth())
+      .catch(() => {});
     let mounted = true;
     void supabase()
       .auth.getSession()
