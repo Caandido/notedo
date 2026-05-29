@@ -9,9 +9,13 @@
     "lint": "eslint",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "build:exe": "tauri build"
+    "build:exe": "tauri build",
+    "cap": "cap",
+    "build:apk": "next build && cap sync android"
   },
   "dependencies": {
+    "@capacitor/android": "^8",
+    "@capacitor/core": "^8",
     "@tiptap/extension-image": "^3.23.6",
     "@tiptap/extension-link": "^3.23.6",
     "@tiptap/extension-placeholder": "^3.23.6",
@@ -38,6 +42,8 @@
     "zustand": "^5.0.13"
   },
   "devDependencies": {
+    "@capacitor/assets": "^3",
+    "@capacitor/cli": "^8",
     "@tailwindcss/postcss": "^4",
     "@tauri-apps/cli": "^2",
     "@types/node": "^20",

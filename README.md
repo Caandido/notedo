@@ -43,10 +43,33 @@ O instalador NSIS sai em:
 src-tauri/target/release/bundle/nsis/Notedo_1.1.0_x64-setup.exe
 ```
 
-### Build automático no CI
+## Build do `.apk` (Android, Capacitor)
 
-O workflow `.github/workflows/release.yml` compila o `.exe` na nuvem
-(runner Windows) e anexa o instalador à Release. Para disparar:
+O projeto nativo `android/` é gerado a cada build (não é versionado).
+Requer **Node 20 + JDK 17 + Android SDK**.
+
+```bash
+npm run build                 # gera out/
+npx cap add android           # cria android/ (1ª vez)
+npx @capacitor/assets generate --android \
+  --iconBackgroundColor "#0a0a0b" --iconBackgroundColorDark "#0a0a0b"
+npx cap sync android
+cd android && ./gradlew assembleDebug
+```
+
+O APK (debug, instalável por sideload) sai em:
+
+```
+android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+> Para um APK de release assinado, gere um keystore com `keytool` e configure
+> a assinatura no Gradle + um secret `ANDROID_KEYSTORE_BASE64` no GitHub.
+
+## Build automático no CI
+
+O workflow `.github/workflows/release.yml` compila **`.exe` (Windows)** e
+**`.apk` (Android)** na nuvem e anexa os dois à Release. Para disparar:
 
 ```bash
 git tag v1.1.0
@@ -61,4 +84,4 @@ Também dá pra rodar manualmente em **Actions → Release → Run workflow**.
 - Dexie (IndexedDB) para persistência offline
 - TipTap (editor rico) · KaTeX (equações) · Recharts (gráficos)
 - Zustand (timer) · Framer Motion
-- Tauri v2 para empacotar o desktop
+- Tauri v2 (desktop `.exe`) · Capacitor 8 (Android `.apk`)

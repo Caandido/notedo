@@ -17,12 +17,8 @@
 /.next/
 /out/
 
-# capacitor (android) — build artifacts only; android/ project é commitado
-/android/build/
-/android/app/build/
-/android/.gradle/
-/android/app/release/
-/android/local.properties
+# capacitor (android) — projeto nativo é gerado no CI (npx cap add android), não versionado
+/android/
 *.keystore
 *.jks
 
