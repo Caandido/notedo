@@ -40,13 +40,13 @@ npm run build:exe                        # next build -> out/  +  tauri build
 O instalador NSIS sai em:
 
 ```
-src-tauri/target/release/bundle/nsis/Notedo_1.1.0_x64-setup.exe
+src-tauri/target/release/bundle/nsis/Notedo_1.1.1_x64-setup.exe
 ```
 
 ## Build do `.apk` (Android, Capacitor)
 
 O projeto nativo `android/` é gerado a cada build (não é versionado).
-Requer **Node 20 + JDK 17 + Android SDK**.
+Requer **Node ≥22 + JDK 21 + Android SDK** (exigência do Capacitor 8).
 
 ```bash
 npm run build                 # gera out/
