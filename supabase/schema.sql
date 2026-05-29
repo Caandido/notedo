@@ -173,7 +173,28 @@ create policy own_profile on public.profiles for all
   with check (id = (select auth.uid()));
 
 -- ─────────────────────────────────────────────────────────────────────────
--- (Fase 4) LWW no servidor: upsert que só sobrescreve se vier mais novo.
--- Deixe comentado por enquanto; ativamos quando o sync básico estiver de pé.
+-- Fase 4 — LWW no servidor via trigger BEFORE UPDATE.
+-- Ignora escritas obsoletas (NEW.updated_at < OLD.updated_at -> mantém OLD).
+-- Genérico (qualquer tabela com updated_at) e sem mudança no cliente: o
+-- upsert do PostgREST dispara o trigger no caminho DO UPDATE.
 -- ─────────────────────────────────────────────────────────────────────────
--- create or replace function public.upsert_if_newer(_table text, _rows jsonb) ...
+create or replace function public.lww_guard()
+returns trigger language plpgsql as $$
+begin
+  if NEW.updated_at < OLD.updated_at then
+    return OLD;  -- chegou mais velho que o atual: descarta
+  end if;
+  return NEW;
+end $$;
+
+do $$
+declare t text;
+begin
+  foreach t in array array['subjects','topics','sessions','goals','reviews','flashcards','events','grades','profiles']
+  loop
+    execute format('drop trigger if exists lww_guard_trg on public.%I;', t);
+    execute format(
+      'create trigger lww_guard_trg before update on public.%I
+         for each row execute function public.lww_guard();', t);
+  end loop;
+end $$;
