@@ -107,7 +107,7 @@ function TopicCard({ subjectId, subjectColor, topic, depth }: TopicCardProps) {
         />
 
         <Link
-          href={`/topics/${topic.id}`}
+          href={`/topic?id=${topic.id}`}
           className="flex flex-1 items-center gap-3 px-3 py-3"
         >
           {hasChildren ? (

@@ -1,6 +1,7 @@
 "use client";
 
-import { notFound, useParams } from "next/navigation";
+import * as React from "react";
+import { notFound, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -51,7 +52,16 @@ function relativeTime(date: Date): string {
 }
 
 export default function SubjectDetailPage() {
-  const { id } = useParams<{ id: string }>();
+  return (
+    <React.Suspense fallback={<PageLoading />}>
+      <SubjectDetailContent />
+    </React.Suspense>
+  );
+}
+
+function SubjectDetailContent() {
+  const params = useSearchParams();
+  const id = params.get("id") ?? "";
   const detailQ = useRepoQuery(() => getSubjectDetail(id), [id]);
   const gradesQ = useRepoQuery(() => getGradesForSubject(id), [id]);
 

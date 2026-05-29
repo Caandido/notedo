@@ -1,6 +1,7 @@
 "use client";
 
-import { notFound, useParams } from "next/navigation";
+import * as React from "react";
+import { notFound, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -43,7 +44,16 @@ function relativeTime(date: Date): string {
 }
 
 export default function TopicDetailPage() {
-  const { id } = useParams<{ id: string }>();
+  return (
+    <React.Suspense fallback={<PageLoading />}>
+      <TopicDetailContent />
+    </React.Suspense>
+  );
+}
+
+function TopicDetailContent() {
+  const params = useSearchParams();
+  const id = params.get("id") ?? "";
   const { data: detail, loading } = useRepoQuery(
     () => getTopicDetail(id),
     [id]
@@ -79,7 +89,7 @@ export default function TopicDetailPage() {
           </Button>
           <ChevronRight className="size-3" />
           <Link
-            href={`/subjects/${subject.id}`}
+            href={`/subject?id=${subject.id}`}
             className="rounded px-1.5 py-0.5 transition-colors hover:bg-[var(--color-accent)] hover:text-[var(--color-foreground)]"
           >
             {subject.name}
@@ -88,7 +98,7 @@ export default function TopicDetailPage() {
             <span key={a.id} className="flex items-center gap-1">
               <ChevronRight className="size-3" />
               <Link
-                href={`/topics/${a.id}`}
+                href={`/topic?id=${a.id}`}
                 className="rounded px-1.5 py-0.5 transition-colors hover:bg-[var(--color-accent)] hover:text-[var(--color-foreground)]"
               >
                 {a.title}

@@ -21,7 +21,7 @@ export function SubjectAverageCard({ subject }: SubjectAverageCardProps) {
   const percent = hasGrades ? (avg / 10) * 100 : 0;
 
   return (
-    <Link href={`/subjects/${subject.id}`} className="block">
+    <Link href={`/subject?id=${subject.id}`} className="block">
       <Card className="group h-full transition-shadow hover:shadow-md">
         <CardContent className="space-y-3 p-4">
           <div className="flex items-center justify-between gap-2">

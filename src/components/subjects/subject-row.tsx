@@ -48,7 +48,7 @@ export function SubjectRow({ subject }: SubjectRowProps) {
 
   return (
     <Link
-      href={`/subjects/${subject.id}`}
+      href={`/subject?id=${subject.id}`}
       className="block focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-background)] rounded-xl"
     >
       <Card className="group transition-shadow hover:shadow-md">

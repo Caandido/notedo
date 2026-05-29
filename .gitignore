@@ -17,6 +17,19 @@
 /.next/
 /out/
 
+# capacitor (android) — build artifacts only; android/ project é commitado
+/android/build/
+/android/app/build/
+/android/.gradle/
+/android/app/release/
+/android/local.properties
+*.keystore
+*.jks
+
+# tauri (windows)
+/src-tauri/target/
+/src-tauri/gen/
+
 # production
 /build
 
