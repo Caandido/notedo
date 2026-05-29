@@ -3,6 +3,7 @@
 import { cuid, db } from "@/lib/db";
 import { getCurrentUserId } from "@/lib/auth";
 import { invalidateAll } from "@/lib/db/use-repo";
+import { dateInputToMs } from "@/lib/utils";
 
 export type GradeType = "exam" | "assignment" | "quiz" | "other";
 
@@ -30,7 +31,7 @@ function validate(input: Omit<CreateGradeInput, "subjectId">) {
     return "Nota acima do limite.";
   if (!Number.isFinite(input.weight) || input.weight <= 0)
     return "Peso inválido.";
-  if (Number.isNaN(new Date(input.date).getTime())) return "Data inválida.";
+  if (Number.isNaN(dateInputToMs(input.date))) return "Data inválida.";
   return null;
 }
 
@@ -53,7 +54,7 @@ export async function createGrade(input: CreateGradeInput) {
     score: input.score,
     maxScore: input.maxScore,
     weight: input.weight,
-    date: new Date(input.date).getTime(),
+    date: dateInputToMs(input.date),
     comments: input.comments?.trim() || null,
     createdAt: now,
     updatedAt: now,
@@ -84,7 +85,7 @@ export async function updateGrade(input: UpdateGradeInput) {
     score: input.score,
     maxScore: input.maxScore,
     weight: input.weight,
-    date: new Date(input.date).getTime(),
+    date: dateInputToMs(input.date),
     comments: input.comments?.trim() || null,
     updatedAt: Date.now(),
   });

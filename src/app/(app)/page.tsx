@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import Link from "next/link";
 import { Clock, Flame, Repeat, Timer as TimerIcon } from "lucide-react";
 
@@ -11,6 +12,7 @@ import { SubjectsCard } from "@/components/dashboard/subjects-card";
 import { SessionsCard } from "@/components/dashboard/sessions-card";
 import { WeeklyChart } from "@/components/dashboard/weekly-chart";
 import { Heatmap } from "@/components/dashboard/heatmap";
+import { DashboardCalendar } from "@/components/dashboard/dashboard-calendar";
 import { formatDuration } from "@/lib/utils";
 import { useRepoQuery } from "@/lib/db/use-repo";
 import { getDashboardData } from "@/lib/queries";
@@ -88,6 +90,15 @@ export default function DashboardPage() {
             <Heatmap data={data.heatmap} />
           </div>
           <SubjectsCard subjects={data.subjects} />
+        </section>
+
+        <section className="space-y-3">
+          <h2 className="text-sm font-semibold tracking-tight text-[var(--color-muted-foreground)]">
+            Calendário
+          </h2>
+          <React.Suspense fallback={null}>
+            <DashboardCalendar />
+          </React.Suspense>
         </section>
 
         <section>

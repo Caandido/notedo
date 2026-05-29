@@ -3,6 +3,7 @@
 import { cuid, db } from "@/lib/db";
 import { getCurrentUserId } from "@/lib/auth";
 import { invalidateAll } from "@/lib/db/use-repo";
+import { dateInputToMs } from "@/lib/utils";
 
 export type EventType = "exam" | "task" | "class" | "custom";
 
@@ -21,7 +22,7 @@ export async function createEvent(input: CreateEventInput) {
   if (!title) return { ok: false as const, error: "Título obrigatório." };
   if (!VALID_TYPES.includes(input.type))
     return { ok: false as const, error: "Tipo inválido." };
-  const ts = new Date(input.date).getTime();
+  const ts = dateInputToMs(input.date);
   if (Number.isNaN(ts)) return { ok: false as const, error: "Data inválida." };
 
   const userId = getCurrentUserId();
@@ -53,7 +54,7 @@ export type UpdateEventInput = CreateEventInput & { id: string };
 export async function updateEvent(input: UpdateEventInput) {
   const title = input.title.trim();
   if (!title) return { ok: false as const, error: "Título obrigatório." };
-  const ts = new Date(input.date).getTime();
+  const ts = dateInputToMs(input.date);
   if (Number.isNaN(ts)) return { ok: false as const, error: "Data inválida." };
 
   const userId = getCurrentUserId();

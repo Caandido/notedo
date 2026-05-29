@@ -62,6 +62,9 @@ interface CalendarViewProps {
   month: number;
   days: DayCell[];
   subjects: SubjectOption[];
+  /** Quando fornecido, a navegação de mês usa estado local (embed no dashboard)
+   * em vez de reescrever a URL (página /calendar). */
+  onNavigate?: (year: number, month: number) => void;
 }
 
 const MONTH_NAMES = [
@@ -117,6 +120,7 @@ export function CalendarView({
   month,
   days,
   subjects,
+  onNavigate,
 }: CalendarViewProps) {
   const pathname = usePathname();
   const params = useSearchParams();
@@ -126,11 +130,16 @@ export function CalendarView({
 
   const today = new Date();
 
+  function targetYM(deltaMonths: number) {
+    const d = new Date(year, month + deltaMonths, 1);
+    return { y: d.getFullYear(), m: d.getMonth() };
+  }
+
   function navHref(deltaMonths: number) {
-    const next = new Date(year, month + deltaMonths, 1);
+    const { y, m } = targetYM(deltaMonths);
     const search = new URLSearchParams(params);
-    search.set("y", next.getFullYear().toString());
-    search.set("m", next.getMonth().toString());
+    search.set("y", y.toString());
+    search.set("m", m.toString());
     return `${pathname}?${search.toString()}`;
   }
 
@@ -139,6 +148,10 @@ export function CalendarView({
     search.set("y", today.getFullYear().toString());
     search.set("m", today.getMonth().toString());
     return `${pathname}?${search.toString()}`;
+  }
+
+  function deltaToToday() {
+    return (today.getFullYear() - year) * 12 + (today.getMonth() - month);
   }
 
   const firstWeekday = new Date(year, month, 1).getDay();
@@ -152,19 +165,56 @@ export function CalendarView({
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Button asChild variant="outline" size="icon" aria-label="Mês anterior">
-            <Link href={navHref(-1)}>
-              <ChevronLeft className="size-4" />
-            </Link>
-          </Button>
-          <Button asChild variant="outline" size="icon" aria-label="Próximo mês">
-            <Link href={navHref(1)}>
-              <ChevronRight className="size-4" />
-            </Link>
-          </Button>
-          <Button asChild variant="ghost" size="sm">
-            <Link href={todayHref()}>Hoje</Link>
-          </Button>
+          {onNavigate ? (
+            <>
+              <Button
+                variant="outline"
+                size="icon"
+                aria-label="Mês anterior"
+                onClick={() => {
+                  const { y, m } = targetYM(-1);
+                  onNavigate(y, m);
+                }}
+              >
+                <ChevronLeft className="size-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                aria-label="Próximo mês"
+                onClick={() => {
+                  const { y, m } = targetYM(1);
+                  onNavigate(y, m);
+                }}
+              >
+                <ChevronRight className="size-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => onNavigate(today.getFullYear(), today.getMonth())}
+                disabled={deltaToToday() === 0}
+              >
+                Hoje
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button asChild variant="outline" size="icon" aria-label="Mês anterior">
+                <Link href={navHref(-1)}>
+                  <ChevronLeft className="size-4" />
+                </Link>
+              </Button>
+              <Button asChild variant="outline" size="icon" aria-label="Próximo mês">
+                <Link href={navHref(1)}>
+                  <ChevronRight className="size-4" />
+                </Link>
+              </Button>
+              <Button asChild variant="ghost" size="sm">
+                <Link href={todayHref()}>Hoje</Link>
+              </Button>
+            </>
+          )}
         </div>
         <h2 className="text-sm font-semibold tracking-tight">
           {MONTH_NAMES[month]} de {year}

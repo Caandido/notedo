@@ -17,3 +17,17 @@ export function formatHours(seconds: number): string {
   const hours = seconds / 3600;
   return hours.toFixed(1) + "h";
 }
+
+/**
+ * Converte o valor de um <input type="date"> ("YYYY-MM-DD") para o timestamp
+ * da meia-noite LOCAL daquele dia. `new Date("YYYY-MM-DD")` parseia como UTC,
+ * o que desloca o dia em fusos negativos (ex.: Brasil UTC-3, vira o dia anterior).
+ * Retorna NaN se a string for inválida (preserva validações existentes).
+ */
+export function dateInputToMs(value: string): number {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+  if (m) {
+    return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 0, 0, 0, 0).getTime();
+  }
+  return new Date(value).getTime();
+}
