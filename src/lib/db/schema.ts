@@ -1,4 +1,17 @@
-export type LocalUser = {
+/**
+ * Metadados de sincronização presentes em TODAS as linhas.
+ * - updatedAt: ms epoch; base do last-write-wins.
+ * - _dirty: 1 = mudança local ainda não enviada ao servidor.
+ * Deletes NÃO usam soft-delete in-place (evita vazar "fantasma" nos reads):
+ * são hard-delete local + registro em `_tombstones` (ver TombstoneRow).
+ * O prefixo "_" marca campos locais que nunca vão crus ao Supabase (ver mappers).
+ */
+export type SyncMeta = {
+  updatedAt: number;
+  _dirty: 0 | 1;
+};
+
+export type LocalUser = SyncMeta & {
   id: string;
   name: string;
   email?: string;
@@ -6,7 +19,7 @@ export type LocalUser = {
   createdAt: number;
 };
 
-export type SubjectRow = {
+export type SubjectRow = SyncMeta & {
   id: string;
   userId: string;
   name: string;
@@ -17,21 +30,20 @@ export type SubjectRow = {
   tags: string[];
   archived: boolean;
   createdAt: number;
-  updatedAt: number;
 };
 
-export type TopicRow = {
+export type TopicRow = SyncMeta & {
   id: string;
+  userId: string;
   subjectId: string;
   parentId: string | null;
   title: string;
   content: unknown;
   order: number;
   createdAt: number;
-  updatedAt: number;
 };
 
-export type StudySessionRow = {
+export type StudySessionRow = SyncMeta & {
   id: string;
   userId: string;
   subjectId: string | null;
@@ -45,7 +57,7 @@ export type StudySessionRow = {
   createdAt: number;
 };
 
-export type GoalRow = {
+export type GoalRow = SyncMeta & {
   id: string;
   userId: string;
   type: "DAILY" | "WEEKLY" | "MONTHLY";
@@ -54,10 +66,9 @@ export type GoalRow = {
   label: string;
   active: boolean;
   createdAt: number;
-  updatedAt: number;
 };
 
-export type ReviewRow = {
+export type ReviewRow = SyncMeta & {
   id: string;
   userId: string;
   subjectId: string | null;
@@ -70,7 +81,7 @@ export type ReviewRow = {
   createdAt: number;
 };
 
-export type FlashcardRow = {
+export type FlashcardRow = SyncMeta & {
   id: string;
   userId: string;
   front: string;
@@ -82,7 +93,7 @@ export type FlashcardRow = {
   createdAt: number;
 };
 
-export type CalendarEventRow = {
+export type CalendarEventRow = SyncMeta & {
   id: string;
   userId: string;
   subjectId: string | null;
@@ -92,10 +103,9 @@ export type CalendarEventRow = {
   date: number;
   done: boolean;
   createdAt: number;
-  updatedAt: number;
 };
 
-export type GradeRow = {
+export type GradeRow = SyncMeta & {
   id: string;
   userId: string;
   subjectId: string;
@@ -107,5 +117,39 @@ export type GradeRow = {
   date: number;
   comments: string | null;
   createdAt: number;
-  updatedAt: number;
 };
+
+/** Watermark de pull por tabela (maior updated_at já trazido do servidor, em ms). */
+export type SyncStateRow = {
+  table: string;
+  pulledThrough: number;
+};
+
+/**
+ * Lápide de exclusão. Delete = hard-delete local da linha + um registro aqui.
+ * O push faz UPDATE ... SET deleted_at no servidor (0 linhas se nunca sincronizou).
+ * key = `${table}:${rowId}` (PK).
+ */
+export type TombstoneRow = {
+  key: string;
+  table: SyncTableName;
+  rowId: string;
+  userId: string;
+  deletedAt: number;
+  _dirty: 0 | 1;
+};
+
+/** Nomes das tabelas de dados sincronizáveis (ordem de sync: pais antes de filhos). */
+export const SYNC_TABLES = [
+  "users",
+  "subjects",
+  "topics",
+  "sessions",
+  "goals",
+  "reviews",
+  "flashcards",
+  "events",
+  "grades",
+] as const;
+
+export type SyncTableName = (typeof SYNC_TABLES)[number];

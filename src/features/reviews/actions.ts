@@ -1,6 +1,7 @@
 "use client";
 
 import { cuid, db } from "@/lib/db";
+import { writeAdd, writeDelete, writeUpdate } from "@/lib/db/write";
 import { getCurrentUserId } from "@/lib/auth";
 import { invalidateAll } from "@/lib/db/use-repo";
 
@@ -26,7 +27,7 @@ export async function createReview(input: CreateReviewInput) {
       return { ok: false as const, error: "Matéria não encontrada." };
   }
 
-  await db().reviews.add({
+  await writeAdd("reviews", {
     id: cuid(),
     userId,
     subjectId: input.subjectId,
@@ -52,11 +53,11 @@ export async function completeReview(reviewId: string) {
   const nextScheduledAt = Date.now() + nextInterval * DAY_MS;
 
   await db().transaction("rw", db().reviews, async () => {
-    await db().reviews.update(review.id, {
+    await writeUpdate("reviews", review.id, {
       status: "COMPLETED",
       completedAt: Date.now(),
     });
-    await db().reviews.add({
+    await writeAdd("reviews", {
       id: cuid(),
       userId,
       subjectId: review.subjectId,
@@ -80,11 +81,11 @@ export async function skipReview(reviewId: string) {
     return { ok: false as const, error: "Revisão não encontrada." };
 
   await db().transaction("rw", db().reviews, async () => {
-    await db().reviews.update(review.id, {
+    await writeUpdate("reviews", review.id, {
       status: "SKIPPED",
       completedAt: Date.now(),
     });
-    await db().reviews.add({
+    await writeAdd("reviews", {
       id: cuid(),
       userId,
       subjectId: review.subjectId,
@@ -118,7 +119,7 @@ export async function updateReview(input: UpdateReviewInput) {
   if (!review || review.userId !== userId)
     return { ok: false as const, error: "Revisão não encontrada." };
 
-  await db().reviews.update(input.id, { title, scheduledAt: ts });
+  await writeUpdate("reviews", input.id, { title, scheduledAt: ts });
   invalidateAll();
   return { ok: true as const };
 }
@@ -128,7 +129,7 @@ export async function deleteReview(reviewId: string) {
   const review = await db().reviews.get(reviewId);
   if (!review || review.userId !== userId)
     return { ok: false as const, error: "Revisão não encontrada." };
-  await db().reviews.delete(reviewId);
+  await writeDelete("reviews", reviewId);
   invalidateAll();
   return { ok: true as const };
 }

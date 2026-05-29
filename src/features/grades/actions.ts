@@ -1,6 +1,7 @@
 "use client";
 
 import { cuid, db } from "@/lib/db";
+import { writeAdd, writeDelete, writeUpdate } from "@/lib/db/write";
 import { getCurrentUserId } from "@/lib/auth";
 import { invalidateAll } from "@/lib/db/use-repo";
 import { dateInputToMs } from "@/lib/utils";
@@ -45,7 +46,7 @@ export async function createGrade(input: CreateGradeInput) {
     return { ok: false as const, error: "Matéria não encontrada." };
 
   const now = Date.now();
-  await db().grades.add({
+  await writeAdd("grades", {
     id: cuid(),
     userId,
     subjectId: input.subjectId,
@@ -78,7 +79,7 @@ export async function updateGrade(input: UpdateGradeInput) {
   if (!grade || grade.userId !== userId)
     return { ok: false as const, error: "Nota não encontrada." };
 
-  await db().grades.update(input.id, {
+  await writeUpdate("grades", input.id, {
     subjectId: input.subjectId,
     title: input.title.trim(),
     type: input.type.toUpperCase() as "EXAM" | "ASSIGNMENT" | "QUIZ" | "OTHER",
@@ -87,7 +88,6 @@ export async function updateGrade(input: UpdateGradeInput) {
     weight: input.weight,
     date: dateInputToMs(input.date),
     comments: input.comments?.trim() || null,
-    updatedAt: Date.now(),
   });
   invalidateAll();
   return { ok: true as const };
@@ -98,7 +98,7 @@ export async function deleteGrade(id: string) {
   const grade = await db().grades.get(id);
   if (!grade || grade.userId !== userId)
     return { ok: false as const, error: "Nota não encontrada." };
-  await db().grades.delete(id);
+  await writeDelete("grades", id);
   invalidateAll();
   return { ok: true as const };
 }

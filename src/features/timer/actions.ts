@@ -1,6 +1,7 @@
 "use client";
 
 import { cuid, db } from "@/lib/db";
+import { writeAdd } from "@/lib/db/write";
 import { getCurrentUserId } from "@/lib/auth";
 import { invalidateAll } from "@/lib/db/use-repo";
 
@@ -32,7 +33,7 @@ export async function saveStudySession(input: SaveSessionInput) {
   const startedAtMs = input.startedAt
     ? new Date(input.startedAt).getTime()
     : Date.now();
-  await db().sessions.add({
+  await writeAdd("sessions", {
     id: cuid(),
     userId,
     subjectId: input.subjectId,

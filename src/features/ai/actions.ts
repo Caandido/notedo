@@ -1,6 +1,7 @@
 "use client";
 
-import { cuid, db } from "@/lib/db";
+import { cuid } from "@/lib/db";
+import { writeBulkAdd } from "@/lib/db/write";
 import { getCurrentUserId } from "@/lib/auth";
 import { invalidateAll } from "@/lib/db/use-repo";
 
@@ -145,7 +146,8 @@ export async function saveGeneratedCards(input: SaveGeneratedInput) {
   const deck = input.deck?.trim().slice(0, 60) || null;
   const now = Date.now();
 
-  await db().flashcards.bulkAdd(
+  await writeBulkAdd(
+    "flashcards",
     valid.map((c) => ({
       id: cuid(),
       userId,

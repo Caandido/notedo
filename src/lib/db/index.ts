@@ -2,16 +2,19 @@
 
 import Dexie, { type Table } from "dexie";
 
-import type {
-  CalendarEventRow,
-  FlashcardRow,
-  GoalRow,
-  GradeRow,
-  LocalUser,
-  ReviewRow,
-  StudySessionRow,
-  SubjectRow,
-  TopicRow,
+import {
+  SYNC_TABLES,
+  type CalendarEventRow,
+  type FlashcardRow,
+  type GoalRow,
+  type GradeRow,
+  type LocalUser,
+  type ReviewRow,
+  type StudySessionRow,
+  type SubjectRow,
+  type SyncStateRow,
+  type TombstoneRow,
+  type TopicRow,
 } from "./schema";
 
 class NotedoDB extends Dexie {
@@ -24,6 +27,8 @@ class NotedoDB extends Dexie {
   flashcards!: Table<FlashcardRow, string>;
   events!: Table<CalendarEventRow, string>;
   grades!: Table<GradeRow, string>;
+  _sync_state!: Table<SyncStateRow, string>;
+  _tombstones!: Table<TombstoneRow, string>;
 
   constructor() {
     super("notedo");
@@ -38,6 +43,43 @@ class NotedoDB extends Dexie {
       events: "id, userId, subjectId, date, [userId+date]",
       grades: "id, userId, subjectId, date, [userId+date], [subjectId+date]",
     });
+
+    // v2: metadados de sync (_dirty/_deleted/updatedAt), userId em topics e
+    // tabela de watermark. Backfill marca tudo dirty pra primeiro push pós-login.
+    this.version(2)
+      .stores({
+        users: "id, email, _dirty",
+        subjects: "id, userId, [userId+archived], updatedAt, _dirty",
+        topics:
+          "id, userId, subjectId, parentId, [subjectId+parentId], updatedAt, _dirty",
+        sessions:
+          "id, userId, subjectId, topicId, startedAt, [userId+startedAt], updatedAt, _dirty",
+        goals: "id, userId, [userId+active], createdAt, updatedAt, _dirty",
+        reviews:
+          "id, userId, status, scheduledAt, [userId+status], [userId+scheduledAt], updatedAt, _dirty",
+        flashcards: "id, userId, deck, nextReview, [userId+nextReview], updatedAt, _dirty",
+        events: "id, userId, subjectId, date, [userId+date], updatedAt, _dirty",
+        grades:
+          "id, userId, subjectId, date, [userId+date], [subjectId+date], updatedAt, _dirty",
+        _sync_state: "table",
+        _tombstones: "key, _dirty",
+      })
+      .upgrade(async (tx) => {
+        for (const name of SYNC_TABLES) {
+          await tx
+            .table(name)
+            .toCollection()
+            .modify((r: Record<string, unknown>) => {
+              r._dirty = 1;
+              if (r.updatedAt == null) {
+                r.updatedAt = (r.createdAt as number) ?? Date.now();
+              }
+              // topics ganham userId denormalizado; backfill resolvido no
+              // sync/migração (subjectId conhecido), aqui só garante o campo.
+              if (name === "topics" && r.userId == null) r.userId = "";
+            });
+        }
+      });
   }
 }
 
@@ -51,10 +93,16 @@ export function db(): NotedoDB {
   return _db;
 }
 
+/** Fecha e zera o singleton (usado no sign-out após apagar o IndexedDB). */
+export function resetDbSingleton(): void {
+  if (_db) {
+    _db.close();
+    _db = null;
+  }
+}
+
 export function cuid(): string {
-  return (
-    Date.now().toString(36) + Math.random().toString(36).slice(2, 10)
-  );
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
 }
 
 const USER_KEY = "notedo:userId";
@@ -65,11 +113,14 @@ export function getOrInitLocalUser(): string {
   if (id) return id;
   id = cuid();
   window.localStorage.setItem(USER_KEY, id);
+  const now = Date.now();
   void db()
     .users.put({
       id,
       name: "Você",
-      createdAt: Date.now(),
+      createdAt: now,
+      updatedAt: now,
+      _dirty: 1,
     })
     .catch(() => {});
   return id;

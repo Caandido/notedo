@@ -1,6 +1,7 @@
 "use client";
 
 import { cuid, db } from "@/lib/db";
+import { writeAdd, writeDelete, writeUpdate } from "@/lib/db/write";
 import { getCurrentUserId } from "@/lib/auth";
 import { invalidateAll } from "@/lib/db/use-repo";
 import { dateInputToMs } from "@/lib/utils";
@@ -33,7 +34,7 @@ export async function createEvent(input: CreateEventInput) {
   }
 
   const now = Date.now();
-  await db().events.add({
+  await writeAdd("events", {
     id: cuid(),
     userId,
     subjectId: input.subjectId ?? null,
@@ -62,13 +63,12 @@ export async function updateEvent(input: UpdateEventInput) {
   if (!event || event.userId !== userId)
     return { ok: false as const, error: "Evento não encontrado." };
 
-  await db().events.update(input.id, {
+  await writeUpdate("events", input.id, {
     title,
     type: input.type.toUpperCase() as "EXAM" | "TASK" | "CLASS" | "CUSTOM",
     date: ts,
     subjectId: input.subjectId ?? null,
     notes: input.notes?.trim() || null,
-    updatedAt: Date.now(),
   });
   invalidateAll();
   return { ok: true as const };
@@ -79,10 +79,7 @@ export async function toggleEventDone(eventId: string) {
   const event = await db().events.get(eventId);
   if (!event || event.userId !== userId)
     return { ok: false as const, error: "Evento não encontrado." };
-  await db().events.update(eventId, {
-    done: !event.done,
-    updatedAt: Date.now(),
-  });
+  await writeUpdate("events", eventId, { done: !event.done });
   invalidateAll();
   return { ok: true as const };
 }
@@ -92,7 +89,7 @@ export async function deleteEvent(eventId: string) {
   const event = await db().events.get(eventId);
   if (!event || event.userId !== userId)
     return { ok: false as const, error: "Evento não encontrado." };
-  await db().events.delete(eventId);
+  await writeDelete("events", eventId);
   invalidateAll();
   return { ok: true as const };
 }

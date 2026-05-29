@@ -1,6 +1,7 @@
 "use client";
 
 import { cuid, db } from "@/lib/db";
+import { writeAdd, writeUpdate } from "@/lib/db/write";
 import { getCurrentUserId } from "@/lib/auth";
 import { invalidateAll } from "@/lib/db/use-repo";
 
@@ -23,7 +24,7 @@ export async function createSubject(input: CreateSubjectInput) {
   const userId = getCurrentUserId();
   const now = Date.now();
   const id = cuid();
-  await db().subjects.add({
+  await writeAdd("subjects", {
     id,
     userId,
     name,
@@ -49,10 +50,7 @@ export async function archiveSubject(subjectId: string) {
   const subject = await db().subjects.get(subjectId);
   if (!subject || subject.userId !== userId)
     return { ok: false as const, error: "Matéria não encontrada." };
-  await db().subjects.update(subjectId, {
-    archived: true,
-    updatedAt: Date.now(),
-  });
+  await writeUpdate("subjects", subjectId, { archived: true });
   invalidateAll();
   return { ok: true as const };
 }
@@ -62,10 +60,7 @@ export async function unarchiveSubject(subjectId: string) {
   const subject = await db().subjects.get(subjectId);
   if (!subject || subject.userId !== userId)
     return { ok: false as const, error: "Matéria não encontrada." };
-  await db().subjects.update(subjectId, {
-    archived: false,
-    updatedAt: Date.now(),
-  });
+  await writeUpdate("subjects", subjectId, { archived: false });
   invalidateAll();
   return { ok: true as const };
 }
@@ -91,12 +86,11 @@ export async function updateSubject(input: UpdateSubjectInput) {
   if (!subject || subject.userId !== userId)
     return { ok: false as const, error: "Matéria não encontrada." };
 
-  await db().subjects.update(input.id, {
+  await writeUpdate("subjects", input.id, {
     name,
     color: input.color,
     priority: input.priority.toUpperCase() as "LOW" | "MEDIUM" | "HIGH",
     tags: (input.tags ?? []).map((t) => t.trim()).filter(Boolean).slice(0, 8),
-    updatedAt: Date.now(),
   });
   invalidateAll();
   return { ok: true as const };

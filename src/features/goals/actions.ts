@@ -1,6 +1,7 @@
 "use client";
 
 import { cuid, db } from "@/lib/db";
+import { writeAdd, writeDelete, writeUpdate } from "@/lib/db/write";
 import { getCurrentUserId } from "@/lib/auth";
 import { invalidateAll } from "@/lib/db/use-repo";
 
@@ -28,7 +29,7 @@ export async function createGoal(input: CreateGoalInput) {
 
   const userId = getCurrentUserId();
   const now = Date.now();
-  await db().goals.add({
+  await writeAdd("goals", {
     id: cuid(),
     userId,
     label,
@@ -64,10 +65,9 @@ export async function updateGoal(input: UpdateGoalInput) {
   if (!goal || goal.userId !== userId)
     return { ok: false as const, error: "Meta não encontrada." };
 
-  await db().goals.update(input.id, {
+  await writeUpdate("goals", input.id, {
     label,
     target: input.target,
-    updatedAt: Date.now(),
   });
   invalidateAll();
   return { ok: true as const };
@@ -78,7 +78,7 @@ export async function deleteGoal(goalId: string) {
   const goal = await db().goals.get(goalId);
   if (!goal || goal.userId !== userId)
     return { ok: false as const, error: "Meta não encontrada." };
-  await db().goals.delete(goalId);
+  await writeDelete("goals", goalId);
   invalidateAll();
   return { ok: true as const };
 }
@@ -88,7 +88,7 @@ export async function toggleGoalActive(goalId: string, active: boolean) {
   const goal = await db().goals.get(goalId);
   if (!goal || goal.userId !== userId)
     return { ok: false as const, error: "Meta não encontrada." };
-  await db().goals.update(goalId, { active, updatedAt: Date.now() });
+  await writeUpdate("goals", goalId, { active });
   invalidateAll();
   return { ok: true as const };
 }

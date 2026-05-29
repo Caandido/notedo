@@ -1,6 +1,7 @@
 "use client";
 
 import { cuid, db } from "@/lib/db";
+import { writeAdd, writeDelete, writeUpdate } from "@/lib/db/write";
 import { getCurrentUserId } from "@/lib/auth";
 import { invalidateAll } from "@/lib/db/use-repo";
 
@@ -24,7 +25,7 @@ export async function createFlashcard(input: CreateFlashcardInput) {
     return { ok: false as const, error: "Frente e verso são obrigatórios." };
 
   const userId = getCurrentUserId();
-  await db().flashcards.add({
+  await writeAdd("flashcards", {
     id: cuid(),
     userId,
     front,
@@ -44,7 +45,7 @@ export async function deleteFlashcard(id: string) {
   const card = await db().flashcards.get(id);
   if (!card || card.userId !== userId)
     return { ok: false as const, error: "Flashcard não encontrado." };
-  await db().flashcards.delete(id);
+  await writeDelete("flashcards", id);
   invalidateAll();
   return { ok: true as const };
 }
@@ -84,7 +85,7 @@ export async function gradeFlashcard(id: string, quality: Quality) {
   newInterval = Math.min(MAX_INTERVAL_DAYS, newInterval);
   const nextReview = Date.now() + newInterval * DAY_MS;
 
-  await db().flashcards.update(id, {
+  await writeUpdate("flashcards", id, {
     ease: newEase,
     interval: newInterval,
     nextReview,

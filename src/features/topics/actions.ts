@@ -1,6 +1,7 @@
 "use client";
 
 import { cuid, db } from "@/lib/db";
+import { writeAdd, writeBulkDelete, writeUpdate } from "@/lib/db/write";
 import { getCurrentUserId } from "@/lib/auth";
 import { invalidateAll } from "@/lib/db/use-repo";
 
@@ -39,8 +40,9 @@ export async function createTopic(input: CreateTopicInput) {
 
   const now = Date.now();
   const id = cuid();
-  await db().topics.add({
+  await writeAdd("topics", {
     id,
+    userId,
     subjectId: input.subjectId,
     parentId: input.parentId ?? null,
     title,
@@ -66,7 +68,7 @@ export async function renameTopic(topicId: string, title: string) {
   if (!(await assertSubjectOwnership(topic.subjectId, userId)))
     return { ok: false as const, error: "Tópico não encontrado." };
 
-  await db().topics.update(topicId, { title: next, updatedAt: Date.now() });
+  await writeUpdate("topics", topicId, { title: next });
   invalidateAll();
   return { ok: true as const };
 }
@@ -78,7 +80,7 @@ export async function updateTopicContent(topicId: string, content: unknown) {
   if (!(await assertSubjectOwnership(topic.subjectId, userId)))
     return { ok: false as const, error: "Tópico não encontrado." };
 
-  await db().topics.update(topicId, { content, updatedAt: Date.now() });
+  await writeUpdate("topics", topicId, { content });
   invalidateAll();
   return { ok: true as const };
 }
@@ -101,7 +103,7 @@ export async function deleteTopic(topicId: string) {
     return { ok: false as const, error: "Tópico não encontrado." };
 
   const ids = [topicId, ...(await descendants(topicId))];
-  await db().topics.bulkDelete(ids);
+  await writeBulkDelete("topics", ids);
   invalidateAll();
   return { ok: true as const };
 }
