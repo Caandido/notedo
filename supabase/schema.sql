@@ -134,6 +134,23 @@ create table if not exists public.mindmaps (
   deleted_at  timestamptz
 );
 
+create table if not exists public.activities (
+  id          text primary key,
+  user_id     uuid not null references auth.users(id) on delete cascade,
+  subject_id  text,
+  type        text not null default 'ATIVIDADE',
+  status      text not null default 'TODO',
+  title       text not null,
+  content     jsonb,
+  due_date    timestamptz,
+  grade       double precision,
+  max_grade   double precision,
+  "order"     integer not null default 0,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now(),
+  deleted_at  timestamptz
+);
+
 -- Perfil 1:1 com auth.users (id = uuid do usuário).
 create table if not exists public.profiles (
   id          uuid primary key references auth.users(id) on delete cascade,
@@ -157,6 +174,8 @@ create index if not exists flashcards_user_updated  on public.flashcards (user_i
 create index if not exists events_user_updated      on public.events     (user_id, updated_at);
 create index if not exists grades_user_updated      on public.grades     (user_id, updated_at);
 create index if not exists mindmaps_user_updated     on public.mindmaps   (user_id, updated_at);
+create index if not exists activities_user_updated   on public.activities (user_id, updated_at);
+create index if not exists activities_user_status    on public.activities (user_id, status);
 create index if not exists profiles_updated         on public.profiles   (id, updated_at);
 
 -- ─────────────────────────────────────────────────────────────────────────
@@ -167,7 +186,7 @@ create index if not exists profiles_updated         on public.profiles   (id, up
 do $$
 declare t text;
 begin
-  foreach t in array array['subjects','topics','sessions','goals','reviews','flashcards','events','grades','mindmaps']
+  foreach t in array array['subjects','topics','sessions','goals','reviews','flashcards','events','grades','mindmaps','activities']
   loop
     execute format('alter table public.%I enable row level security;', t);
     execute format('drop policy if exists own_rows on public.%I;', t);
@@ -202,7 +221,7 @@ end $$;
 do $$
 declare t text;
 begin
-  foreach t in array array['subjects','topics','sessions','goals','reviews','flashcards','events','grades','mindmaps','profiles']
+  foreach t in array array['subjects','topics','sessions','goals','reviews','flashcards','events','grades','mindmaps','activities','profiles']
   loop
     execute format('drop trigger if exists lww_guard_trg on public.%I;', t);
     execute format(

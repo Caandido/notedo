@@ -4,6 +4,7 @@ import Dexie, { type Table } from "dexie";
 
 import {
   SYNC_TABLES,
+  type ActivityRow,
   type BlobRow,
   type CalendarEventRow,
   type FlashcardRow,
@@ -30,6 +31,7 @@ class NotedoDB extends Dexie {
   events!: Table<CalendarEventRow, string>;
   grades!: Table<GradeRow, string>;
   mindmaps!: Table<MindMapRow, string>;
+  activities!: Table<ActivityRow, string>;
   _sync_state!: Table<SyncStateRow, string>;
   _tombstones!: Table<TombstoneRow, string>;
   _blobs!: Table<BlobRow, string>;
@@ -89,6 +91,12 @@ class NotedoDB extends Dexie {
     this.version(3).stores({
       mindmaps: "id, userId, subjectId, [userId+updatedAt], updatedAt, _dirty",
       _blobs: "path, _dirty",
+    });
+
+    // v4: atividades/redações (sincronizável).
+    this.version(4).stores({
+      activities:
+        "id, userId, subjectId, status, dueDate, [userId+status], [userId+updatedAt], updatedAt, _dirty",
     });
   }
 }

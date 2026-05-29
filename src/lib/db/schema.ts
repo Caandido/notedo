@@ -130,12 +130,18 @@ export type MindMapNode = {
   y: number;
   width?: number;
   height?: number;
-  /** "text" = nó editável; "slide" = imagem importada (Canva/PDF). */
-  kind: "text" | "slide";
+  /**
+   * "text"  = nó simples (textarea);
+   * "slide" = imagem (slide importado do Canva/PDF OU upload solto) no Storage;
+   * "rich"  = conteúdo rico (TipTap: tabelas, fórmulas, links, imagem por URL).
+   */
+  kind: "text" | "slide" | "rich";
   text?: string;
   color?: string | null;
   /** Presente quando kind === "slide". path = chave no bucket/_blobs. */
   slide?: { path: string; w: number; h: number } | null;
+  /** Presente quando kind === "rich". JSON do TipTap. */
+  content?: unknown;
 };
 
 export type MindMapEdge = {
@@ -155,6 +161,35 @@ export type MindMapRow = SyncMeta & {
   subjectId: string | null;
   title: string;
   data: MindMapData;
+  createdAt: number;
+};
+
+export type ActivityType =
+  | "ATIVIDADE"
+  | "REDACAO"
+  | "TRABALHO"
+  | "EXERCICIO"
+  | "PROVA";
+export type ActivityStatus = "TODO" | "DOING" | "DONE";
+
+/**
+ * Atividade / redação / trabalho. Corpo em texto rico (`content`, TipTap JSON)
+ * pra escrever redações com imagens/tabelas/fórmulas. Com `dueDate` definido,
+ * um evento-espelho é mantido na tabela `events` (aparece no Calendário).
+ */
+export type ActivityRow = SyncMeta & {
+  id: string;
+  userId: string;
+  subjectId: string | null;
+  type: ActivityType;
+  status: ActivityStatus;
+  title: string;
+  content: unknown;
+  dueDate: number | null;
+  grade: number | null;
+  maxGrade: number | null;
+  /** ordem dentro da coluna do kanban. */
+  order: number;
   createdAt: number;
 };
 
@@ -201,6 +236,7 @@ export const SYNC_TABLES = [
   "events",
   "grades",
   "mindmaps",
+  "activities",
 ] as const;
 
 export type SyncTableName = (typeof SYNC_TABLES)[number];

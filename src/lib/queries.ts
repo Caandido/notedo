@@ -886,3 +886,43 @@ export async function getMindMap(id: string) {
   if (!map || map.userId !== userId) return null;
   return map;
 }
+
+// ─── Atividades / redações ───────────────────────────────────────────────────
+
+export async function getActivitiesForUser() {
+  const userId = getCurrentUserId();
+  const [acts, subjects] = await Promise.all([
+    db().activities.where("userId").equals(userId).toArray(),
+    userSubjects(userId),
+  ]);
+  const subjMap = new Map(subjects.map((s) => [s.id, { name: s.name, color: s.color }]));
+  return acts
+    .sort((a, b) => a.order - b.order || b.updatedAt - a.updatedAt)
+    .map((a) => {
+      const subj = a.subjectId ? subjMap.get(a.subjectId) : undefined;
+      return {
+        id: a.id,
+        title: a.title,
+        type: a.type,
+        status: a.status,
+        subjectId: a.subjectId,
+        subjectName: subj?.name ?? null,
+        subjectColor: subj?.color ?? null,
+        dueDate: a.dueDate,
+        grade: a.grade,
+        maxGrade: a.maxGrade,
+        order: a.order,
+        updatedAt: a.updatedAt,
+      };
+    });
+}
+export type ActivityListItem = Awaited<
+  ReturnType<typeof getActivitiesForUser>
+>[number];
+
+export async function getActivity(id: string) {
+  const userId = getCurrentUserId();
+  const a = await db().activities.get(id);
+  if (!a || a.userId !== userId) return null;
+  return a;
+}

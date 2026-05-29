@@ -21,19 +21,24 @@ import {
   type OnEdgesChange,
   type OnNodesChange,
 } from "@xyflow/react";
-import { ArrowLeft, Loader2, Plus, Upload } from "lucide-react";
+import { ArrowLeft, FileText, Image as ImageIcon, Loader2, Plus, Upload } from "lucide-react";
 
 import { cuid } from "@/lib/db";
 import { getMindMap } from "@/lib/queries";
-import { renameMindMap, saveMindMapData } from "@/features/mindmaps/actions";
+import {
+  importSlidesIntoMap,
+  renameMindMap,
+  saveMindMapData,
+} from "@/features/mindmaps/actions";
 import type { MindMapData, MindMapNode } from "@/lib/db/schema";
 import { Button } from "@/components/ui/button";
 import { MindMapCtx } from "./editor-context";
 import { TextNode } from "./text-node";
 import { SlideNode } from "./slide-node";
+import { RichNode } from "./rich-node";
 import { ImportDialog } from "./import-dialog";
 
-const nodeTypes: NodeTypes = { text: TextNode, slide: SlideNode };
+const nodeTypes: NodeTypes = { text: TextNode, slide: SlideNode, rich: RichNode };
 
 function toRFNodes(data: MindMapData): Node[] {
   return data.nodes.map((n) => ({
@@ -43,7 +48,9 @@ function toRFNodes(data: MindMapData): Node[] {
     data:
       n.kind === "slide"
         ? { slide: n.slide ?? null }
-        : { text: n.text ?? "", color: n.color ?? null },
+        : n.kind === "rich"
+          ? { content: n.content ?? null }
+          : { text: n.text ?? "", color: n.color ?? null },
     style: n.width ? { width: n.width, height: n.height } : undefined,
   }));
 }
@@ -63,6 +70,8 @@ function serialize(nodes: Node[], edges: Edge[]): MindMapData {
       };
       if (node.kind === "slide") {
         node.slide = (n.data as { slide?: MindMapNode["slide"] }).slide ?? null;
+      } else if (node.kind === "rich") {
+        node.content = (n.data as { content?: unknown }).content ?? null;
       } else {
         const d = n.data as { text?: string; color?: string | null };
         node.text = d.text ?? "";
@@ -165,6 +174,18 @@ function Flow({ id }: { id: string }) {
     [setNodes]
   );
 
+  const updateNodeContent = React.useCallback(
+    (nodeId: string, content: unknown) => {
+      dirty.current = true;
+      setNodes((ns) =>
+        ns.map((n) =>
+          n.id === nodeId ? { ...n, data: { ...n.data, content } } : n
+        )
+      );
+    },
+    [setNodes]
+  );
+
   const addText = React.useCallback(() => {
     dirty.current = true;
     const nid = cuid();
@@ -176,6 +197,22 @@ function Flow({ id }: { id: string }) {
         position: { x: 120 + ns.length * 16, y: 120 + ns.length * 16 },
         data: { text: "", color: null },
         style: { width: 200 },
+        selected: true,
+      },
+    ]);
+  }, [setNodes]);
+
+  const addRich = React.useCallback(() => {
+    dirty.current = true;
+    const nid = cuid();
+    setNodes((ns) => [
+      ...ns,
+      {
+        id: nid,
+        type: "rich",
+        position: { x: 160 + ns.length * 16, y: 160 + ns.length * 16 },
+        data: { content: null },
+        style: { width: 300, height: 180 },
         selected: true,
       },
     ]);
@@ -195,9 +232,21 @@ function Flow({ id }: { id: string }) {
     );
   }, [id, setNodes, setEdges]);
 
+  // Upload de imagem solta -> reaproveita o pipeline de slides (1 arquivo).
+  const imageInputRef = React.useRef<HTMLInputElement>(null);
+  const onPickImage = React.useCallback(
+    async (files: FileList | null) => {
+      if (!files || files.length === 0) return;
+      await flush();
+      await importSlidesIntoMap(id, Array.from(files));
+      await reloadFromDb();
+    },
+    [flush, id, reloadFromDb]
+  );
+
   const ctx = React.useMemo(
-    () => ({ updateNodeText, updateNodeColor }),
-    [updateNodeText, updateNodeColor]
+    () => ({ updateNodeText, updateNodeColor, updateNodeContent }),
+    [updateNodeText, updateNodeColor, updateNodeContent]
   );
 
   return (
@@ -224,6 +273,19 @@ function Flow({ id }: { id: string }) {
             <Plus className="size-3.5" />
             <span className="hidden sm:inline">Texto</span>
           </Button>
+          <Button variant="outline" size="sm" className="gap-1.5" onClick={addRich}>
+            <FileText className="size-3.5" />
+            <span className="hidden sm:inline">Nota</span>
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            onClick={() => imageInputRef.current?.click()}
+          >
+            <ImageIcon className="size-3.5" />
+            <span className="hidden sm:inline">Imagem</span>
+          </Button>
           <Button
             size="sm"
             className="gap-1.5"
@@ -232,6 +294,14 @@ function Flow({ id }: { id: string }) {
             <Upload className="size-3.5" />
             <span className="hidden sm:inline">Importar slides</span>
           </Button>
+          <input
+            ref={imageInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            multiple
+            className="hidden"
+            onChange={(e) => void onPickImage(e.target.files)}
+          />
         </div>
 
         <div className="relative min-h-0 flex-1">

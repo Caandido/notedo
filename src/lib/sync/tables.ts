@@ -7,7 +7,7 @@
 type Field = { col: string; ts?: boolean; json?: boolean };
 
 export type TableDesc = {
-  local: "subjects" | "topics" | "sessions" | "goals" | "reviews" | "flashcards" | "events" | "grades" | "mindmaps";
+  local: "subjects" | "topics" | "sessions" | "goals" | "reviews" | "flashcards" | "events" | "grades" | "mindmaps" | "activities";
   remote: string;
   chunk: number;
   fields: Record<string, Field>;
@@ -169,6 +169,26 @@ export const TABLE_DESCRIPTORS: TableDesc[] = [
       subjectId: { col: "subject_id" },
       title: { col: "title" },
       data: { col: "data", json: true },
+      createdAt: CREATED,
+      updatedAt: UPDATED,
+    },
+  },
+  {
+    local: "activities",
+    remote: "activities",
+    chunk: 100,
+    fields: {
+      id: ID,
+      userId: UID,
+      subjectId: { col: "subject_id" },
+      type: { col: "type" },
+      status: { col: "status" },
+      title: { col: "title" },
+      content: { col: "content", json: true },
+      dueDate: { col: "due_date", ts: true },
+      grade: { col: "grade" },
+      maxGrade: { col: "max_grade" },
+      order: { col: "order" },
       createdAt: CREATED,
       updatedAt: UPDATED,
     },

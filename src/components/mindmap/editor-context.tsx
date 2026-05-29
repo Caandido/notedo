@@ -7,11 +7,13 @@ import * as React from "react";
 type MindMapCtxValue = {
   updateNodeText: (id: string, text: string) => void;
   updateNodeColor: (id: string, color: string | null) => void;
+  updateNodeContent: (id: string, content: unknown) => void;
 };
 
 export const MindMapCtx = React.createContext<MindMapCtxValue>({
   updateNodeText: () => {},
   updateNodeColor: () => {},
+  updateNodeContent: () => {},
 });
 
 export const useMindMapCtx = () => React.useContext(MindMapCtx);

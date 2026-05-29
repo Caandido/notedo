@@ -7,6 +7,7 @@ import {
   BarChart3,
   BookOpen,
   Calendar,
+  ClipboardList,
   GraduationCap,
   LayoutDashboard,
   LogOut,
@@ -36,6 +37,7 @@ const PRIMARY: Item[] = [
 const MORE: Item[] = [
   { href: "/notes", label: "Notas", icon: GraduationCap },
   { href: "/mindmaps", label: "Mapas mentais", icon: Network },
+  { href: "/activities", label: "Atividades", icon: ClipboardList },
   { href: "/goals", label: "Metas", icon: Target },
   { href: "/reviews", label: "Revisões", icon: Repeat },
   { href: "/stats", label: "Estatísticas", icon: BarChart3 },
@@ -48,6 +50,8 @@ function isActive(pathname: string, href: string): boolean {
     return pathname.startsWith("/subjects") || pathname.startsWith("/subject");
   if (href === "/mindmaps")
     return pathname.startsWith("/mindmaps") || pathname.startsWith("/mindmap");
+  if (href === "/activities")
+    return pathname.startsWith("/activities") || pathname.startsWith("/activity");
   return pathname.startsWith(href);
 }
 
