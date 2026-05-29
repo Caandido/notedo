@@ -11,6 +11,7 @@ import {
   ChevronRight,
   GraduationCap,
   LayoutDashboard,
+  LogOut,
   Repeat,
   Settings,
   Target,
@@ -19,6 +20,7 @@ import {
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/components/providers/auth-provider";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -33,6 +35,7 @@ const navItems = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { user, signOut } = useAuth();
   const [collapsed, setCollapsed] = React.useState(false);
 
   return (
@@ -87,6 +90,19 @@ export function Sidebar() {
           {!collapsed && <span>Configurações</span>}
         </Link>
 
+        <button
+          type="button"
+          onClick={() => void signOut()}
+          title={user?.email ?? "Sair"}
+          className="flex h-9 w-full items-center gap-2.5 rounded-md px-2.5 text-sm text-[var(--color-muted-foreground)] transition-colors hover:bg-[var(--color-accent)] hover:text-[var(--color-foreground)]"
+        >
+          <LogOut className="size-4 shrink-0" />
+          {!collapsed && (
+            <span className="min-w-0 flex-1 truncate text-left">
+              Sair{user?.email ? ` · ${user.email}` : ""}
+            </span>
+          )}
+        </button>
       </div>
 
       <Button

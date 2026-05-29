@@ -1,0 +1,179 @@
+"use client";
+
+import type { Table } from "dexie";
+
+import { db } from "@/lib/db";
+import { invalidateAll } from "@/lib/db/use-repo";
+import { supabase, hasSupabaseConfig } from "./client";
+import { getWatermark, setWatermark } from "./watermark";
+import {
+  TABLE_DESCRIPTORS,
+  fromRemote,
+  toRemote,
+  type TableDesc,
+} from "./tables";
+
+const PAGE = 500;
+
+function ref(name: string): Table<Record<string, unknown>, string> {
+  return (db() as unknown as Record<string, Table<Record<string, unknown>, string>>)[
+    name
+  ];
+}
+
+function chunk<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
+const byLocal = new Map(TABLE_DESCRIPTORS.map((d) => [d.local, d]));
+
+// ─── Push ────────────────────────────────────────────────────────────────
+
+async function pushTable(desc: TableDesc): Promise<void> {
+  const dirty = await ref(desc.local).where("_dirty").equals(1).toArray();
+  if (!dirty.length) return;
+  for (const part of chunk(dirty, desc.chunk)) {
+    const payload = part.map((r) => toRemote(desc, r));
+    const { error } = await supabase()
+      .from(desc.remote)
+      .upsert(payload, { onConflict: "id" });
+    if (error) throw error;
+    const ids = part.map((r) => r.id as string);
+    await ref(desc.local).where("id").anyOf(ids).modify({ _dirty: 0 });
+  }
+}
+
+async function pushTombstones(): Promise<void> {
+  const stones = await db()._tombstones.where("_dirty").equals(1).toArray();
+  if (!stones.length) return;
+  for (const s of stones) {
+    const desc = byLocal.get(s.table as TableDesc["local"]);
+    if (!desc) {
+      await db()._tombstones.delete(s.key);
+      continue;
+    }
+    const iso = new Date(s.deletedAt).toISOString();
+    const { error } = await supabase()
+      .from(desc.remote)
+      .update({ deleted_at: iso, updated_at: iso })
+      .eq("id", s.rowId);
+    if (error) throw error;
+    await db()._tombstones.delete(s.key);
+  }
+}
+
+// ─── Pull ────────────────────────────────────────────────────────────────
+
+async function pullTable(desc: TableDesc): Promise<void> {
+  let cursor = await getWatermark(desc.local);
+  for (;;) {
+    const { data, error } = await supabase()
+      .from(desc.remote)
+      .select("*")
+      .gt("updated_at", new Date(cursor).toISOString())
+      .order("updated_at", { ascending: true })
+      .limit(PAGE);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+
+    await db().transaction("rw", ref(desc.local), db()._tombstones, async () => {
+      for (const rr of data as Record<string, unknown>[]) {
+        const incoming = new Date(rr.updated_at as string).getTime();
+        const id = rr.id as string;
+        const local = (await ref(desc.local).get(id)) as
+          | { _dirty?: 0 | 1; updatedAt?: number }
+          | undefined;
+
+        cursor = Math.max(cursor, incoming);
+
+        // LWW: não clobberar edição local mais nova/ainda não enviada.
+        if (local && local._dirty && (local.updatedAt ?? 0) >= incoming) continue;
+        if (local && (local.updatedAt ?? 0) > incoming) continue;
+
+        if (rr.deleted_at) {
+          if (local) await ref(desc.local).delete(id);
+          await db()._tombstones.delete(`${desc.local}:${id}`);
+        } else {
+          await ref(desc.local).put({ ...fromRemote(desc, rr), _dirty: 0 });
+        }
+      }
+    });
+
+    await setWatermark(desc.local, cursor);
+    if (data.length < PAGE) break;
+  }
+}
+
+// ─── Orquestração ──────────────────────────────────────────────────────────
+
+let syncing = false;
+let queued = false;
+
+export async function syncAll(reason = "manual"): Promise<void> {
+  if (!hasSupabaseConfig()) return;
+  if (typeof navigator !== "undefined" && !navigator.onLine) return;
+  if (syncing) {
+    queued = true;
+    return;
+  }
+  syncing = true;
+  try {
+    await pushTombstones();
+    for (const d of TABLE_DESCRIPTORS) await pushTable(d);
+    for (const d of TABLE_DESCRIPTORS) await pullTable(d);
+    invalidateAll();
+  } catch (err) {
+    console.warn(`[sync] falhou (${reason}):`, err);
+  } finally {
+    syncing = false;
+    if (queued) {
+      queued = false;
+      void syncAll("queued");
+    }
+  }
+}
+
+// ─── Gatilhos ──────────────────────────────────────────────────────────────
+
+let started = false;
+let interval: ReturnType<typeof setInterval> | null = null;
+let debounce: ReturnType<typeof setTimeout> | null = null;
+
+function onOnline() {
+  void syncAll("online");
+}
+function onVisible() {
+  if (document.visibilityState === "visible") void syncAll("visible");
+}
+
+export async function startSyncForSession(): Promise<void> {
+  if (started || typeof window === "undefined") return;
+  started = true;
+  window.addEventListener("online", onOnline);
+  document.addEventListener("visibilitychange", onVisible);
+  interval = setInterval(() => {
+    if (document.visibilityState === "visible") void syncAll("interval");
+  }, 60_000);
+  await syncAll("login");
+}
+
+export function stopSync(): void {
+  started = false;
+  if (interval) clearInterval(interval);
+  if (debounce) clearTimeout(debounce);
+  interval = null;
+  debounce = null;
+  if (typeof window !== "undefined") {
+    window.removeEventListener("online", onOnline);
+    document.removeEventListener("visibilitychange", onVisible);
+  }
+}
+
+/** Chamado após mutações locais (debounced) pra empurrar logo. */
+export function scheduleSync(): void {
+  if (!started) return;
+  if (debounce) clearTimeout(debounce);
+  debounce = setTimeout(() => void syncAll("debounce"), 1500);
+}

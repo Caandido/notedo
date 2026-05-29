@@ -16,6 +16,7 @@
   "dependencies": {
     "@capacitor/android": "^8",
     "@capacitor/core": "^8",
+    "@supabase/supabase-js": "^2.106.2",
     "@tiptap/extension-image": "^3.23.6",
     "@tiptap/extension-link": "^3.23.6",
     "@tiptap/extension-placeholder": "^3.23.6",

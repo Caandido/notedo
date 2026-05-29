@@ -4,6 +4,7 @@ import type { Table } from "dexie";
 
 import { db } from "./index";
 import { getCurrentUserId } from "@/lib/auth";
+import { scheduleSync } from "@/lib/sync/engine";
 import type { SyncTableName } from "./schema";
 
 // Acesso dinâmico à tabela sem brigar com os tipos por-tabela do Dexie.
@@ -26,6 +27,7 @@ export async function writeAdd<T extends { id: string; updatedAt?: number }>(
     updatedAt: row.updatedAt ?? Date.now(),
     _dirty: 1,
   });
+  scheduleSync();
 }
 
 export async function writeBulkAdd<T extends { id: string; updatedAt?: number }>(
@@ -36,6 +38,7 @@ export async function writeBulkAdd<T extends { id: string; updatedAt?: number }>
   await ref(table).bulkAdd(
     rows.map((r) => ({ ...r, updatedAt: r.updatedAt ?? now, _dirty: 1 }))
   );
+  scheduleSync();
 }
 
 /** Atualização parcial: sempre bumpa updatedAt e marca _dirty. */
@@ -45,6 +48,7 @@ export async function writeUpdate(
   changes: Record<string, unknown>
 ): Promise<void> {
   await ref(table).update(id, { ...changes, updatedAt: Date.now(), _dirty: 1 });
+  scheduleSync();
 }
 
 /**
@@ -68,6 +72,7 @@ export async function writeDelete(
       _dirty: 1,
     });
   });
+  scheduleSync();
 }
 
 export async function writeBulkDelete(
@@ -90,4 +95,5 @@ export async function writeBulkDelete(
       }))
     );
   });
+  scheduleSync();
 }
