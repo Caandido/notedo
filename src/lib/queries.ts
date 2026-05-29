@@ -857,3 +857,32 @@ export async function getCalendarMonth(year: number, month: number) {
 export type CalendarMonth = Awaited<ReturnType<typeof getCalendarMonth>>;
 
 export type StudySessionView = StudySessionRow;
+
+// ─── Mapas mentais ───────────────────────────────────────────────────────────
+
+export async function getMindMapsForUser() {
+  const userId = getCurrentUserId();
+  const maps = await db().mindmaps.where("userId").equals(userId).toArray();
+  maps.sort((a, b) => b.updatedAt - a.updatedAt);
+  return maps.map((m) => {
+    const nodes = m.data?.nodes ?? [];
+    return {
+      id: m.id,
+      title: m.title,
+      subjectId: m.subjectId,
+      nodeCount: nodes.length,
+      slideCount: nodes.filter((n) => n.kind === "slide").length,
+      updatedAt: m.updatedAt,
+    };
+  });
+}
+export type MindMapListItem = Awaited<
+  ReturnType<typeof getMindMapsForUser>
+>[number];
+
+export async function getMindMap(id: string) {
+  const userId = getCurrentUserId();
+  const map = await db().mindmaps.get(id);
+  if (!map || map.userId !== userId) return null;
+  return map;
+}

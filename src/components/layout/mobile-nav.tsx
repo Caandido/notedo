@@ -12,6 +12,7 @@ import {
   LogOut,
   type LucideIcon,
   MoreHorizontal,
+  Network,
   Repeat,
   Settings,
   Target,
@@ -34,6 +35,7 @@ const PRIMARY: Item[] = [
 
 const MORE: Item[] = [
   { href: "/notes", label: "Notas", icon: GraduationCap },
+  { href: "/mindmaps", label: "Mapas mentais", icon: Network },
   { href: "/goals", label: "Metas", icon: Target },
   { href: "/reviews", label: "Revisões", icon: Repeat },
   { href: "/stats", label: "Estatísticas", icon: BarChart3 },
@@ -44,6 +46,8 @@ function isActive(pathname: string, href: string): boolean {
   if (href === "/") return pathname === "/";
   if (href === "/subjects")
     return pathname.startsWith("/subjects") || pathname.startsWith("/subject");
+  if (href === "/mindmaps")
+    return pathname.startsWith("/mindmaps") || pathname.startsWith("/mindmap");
   return pathname.startsWith(href);
 }
 

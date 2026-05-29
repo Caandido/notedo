@@ -7,7 +7,7 @@
 type Field = { col: string; ts?: boolean; json?: boolean };
 
 export type TableDesc = {
-  local: "subjects" | "topics" | "sessions" | "goals" | "reviews" | "flashcards" | "events" | "grades";
+  local: "subjects" | "topics" | "sessions" | "goals" | "reviews" | "flashcards" | "events" | "grades" | "mindmaps";
   remote: string;
   chunk: number;
   fields: Record<string, Field>;
@@ -155,6 +155,20 @@ export const TABLE_DESCRIPTORS: TableDesc[] = [
       weight: { col: "weight" },
       date: { col: "date", ts: true },
       comments: { col: "comments" },
+      createdAt: CREATED,
+      updatedAt: UPDATED,
+    },
+  },
+  {
+    local: "mindmaps",
+    remote: "mindmaps",
+    chunk: 50,
+    fields: {
+      id: ID,
+      userId: UID,
+      subjectId: { col: "subject_id" },
+      title: { col: "title" },
+      data: { col: "data", json: true },
       createdAt: CREATED,
       updatedAt: UPDATED,
     },

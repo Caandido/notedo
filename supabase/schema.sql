@@ -123,6 +123,17 @@ create table if not exists public.grades (
   deleted_at  timestamptz
 );
 
+create table if not exists public.mindmaps (
+  id          text primary key,
+  user_id     uuid not null references auth.users(id) on delete cascade,
+  subject_id  text,
+  title       text not null,
+  data        jsonb not null default '{"nodes":[],"edges":[]}'::jsonb,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now(),
+  deleted_at  timestamptz
+);
+
 -- Perfil 1:1 com auth.users (id = uuid do usuário).
 create table if not exists public.profiles (
   id          uuid primary key references auth.users(id) on delete cascade,
@@ -145,6 +156,7 @@ create index if not exists reviews_user_updated     on public.reviews    (user_i
 create index if not exists flashcards_user_updated  on public.flashcards (user_id, updated_at);
 create index if not exists events_user_updated      on public.events     (user_id, updated_at);
 create index if not exists grades_user_updated      on public.grades     (user_id, updated_at);
+create index if not exists mindmaps_user_updated     on public.mindmaps   (user_id, updated_at);
 create index if not exists profiles_updated         on public.profiles   (id, updated_at);
 
 -- ─────────────────────────────────────────────────────────────────────────
@@ -155,7 +167,7 @@ create index if not exists profiles_updated         on public.profiles   (id, up
 do $$
 declare t text;
 begin
-  foreach t in array array['subjects','topics','sessions','goals','reviews','flashcards','events','grades']
+  foreach t in array array['subjects','topics','sessions','goals','reviews','flashcards','events','grades','mindmaps']
   loop
     execute format('alter table public.%I enable row level security;', t);
     execute format('drop policy if exists own_rows on public.%I;', t);
@@ -190,7 +202,7 @@ end $$;
 do $$
 declare t text;
 begin
-  foreach t in array array['subjects','topics','sessions','goals','reviews','flashcards','events','grades','profiles']
+  foreach t in array array['subjects','topics','sessions','goals','reviews','flashcards','events','grades','mindmaps','profiles']
   loop
     execute format('drop trigger if exists lww_guard_trg on public.%I;', t);
     execute format(

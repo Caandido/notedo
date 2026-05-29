@@ -4,11 +4,13 @@ import Dexie, { type Table } from "dexie";
 
 import {
   SYNC_TABLES,
+  type BlobRow,
   type CalendarEventRow,
   type FlashcardRow,
   type GoalRow,
   type GradeRow,
   type LocalUser,
+  type MindMapRow,
   type ReviewRow,
   type StudySessionRow,
   type SubjectRow,
@@ -27,8 +29,10 @@ class NotedoDB extends Dexie {
   flashcards!: Table<FlashcardRow, string>;
   events!: Table<CalendarEventRow, string>;
   grades!: Table<GradeRow, string>;
+  mindmaps!: Table<MindMapRow, string>;
   _sync_state!: Table<SyncStateRow, string>;
   _tombstones!: Table<TombstoneRow, string>;
+  _blobs!: Table<BlobRow, string>;
 
   constructor() {
     super("notedo");
@@ -80,6 +84,12 @@ class NotedoDB extends Dexie {
             });
         }
       });
+
+    // v3: mapas mentais (sincronizável) + cache local de binários (slides).
+    this.version(3).stores({
+      mindmaps: "id, userId, subjectId, [userId+updatedAt], updatedAt, _dirty",
+      _blobs: "path, _dirty",
+    });
   }
 }
 

@@ -5,6 +5,7 @@ import type { Table } from "dexie";
 import { db } from "@/lib/db";
 import { invalidateAll } from "@/lib/db/use-repo";
 import { supabase, hasSupabaseConfig } from "./client";
+import { uploadPendingBlobs } from "./storage";
 import { getWatermark, setWatermark } from "./watermark";
 import {
   TABLE_DESCRIPTORS,
@@ -121,6 +122,7 @@ export async function syncAll(reason = "manual"): Promise<void> {
   syncing = true;
   try {
     await pushTombstones();
+    await uploadPendingBlobs(); // slides antes da estrutura que os referencia
     for (const d of TABLE_DESCRIPTORS) await pushTable(d);
     for (const d of TABLE_DESCRIPTORS) await pullTable(d);
     invalidateAll();

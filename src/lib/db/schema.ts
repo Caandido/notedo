@@ -119,6 +119,56 @@ export type GradeRow = SyncMeta & {
   createdAt: number;
 };
 
+/**
+ * Mapa mental. A estrutura (nós/arestas) vive em `data` (JSON sincronizado).
+ * Slides importados (Canva) guardam só o caminho da imagem no Storage + dims;
+ * o binário fica em `_blobs` (cache local) e no bucket `mindmap-slides`.
+ */
+export type MindMapNode = {
+  id: string;
+  x: number;
+  y: number;
+  width?: number;
+  height?: number;
+  /** "text" = nó editável; "slide" = imagem importada (Canva/PDF). */
+  kind: "text" | "slide";
+  text?: string;
+  color?: string | null;
+  /** Presente quando kind === "slide". path = chave no bucket/_blobs. */
+  slide?: { path: string; w: number; h: number } | null;
+};
+
+export type MindMapEdge = {
+  id: string;
+  source: string;
+  target: string;
+};
+
+export type MindMapData = {
+  nodes: MindMapNode[];
+  edges: MindMapEdge[];
+};
+
+export type MindMapRow = SyncMeta & {
+  id: string;
+  userId: string;
+  subjectId: string | null;
+  title: string;
+  data: MindMapData;
+  createdAt: number;
+};
+
+/**
+ * Cache local de binários (slides). NÃO sincroniza pelo motor de tabelas —
+ * o transporte é o Supabase Storage (ver lib/sync/storage.ts). key = path.
+ */
+export type BlobRow = {
+  path: string;
+  blob: Blob;
+  /** 1 = ainda não enviado ao Storage (upload pendente). */
+  _dirty: 0 | 1;
+};
+
 /** Watermark de pull por tabela (maior updated_at já trazido do servidor, em ms). */
 export type SyncStateRow = {
   table: string;
@@ -150,6 +200,7 @@ export const SYNC_TABLES = [
   "flashcards",
   "events",
   "grades",
+  "mindmaps",
 ] as const;
 
 export type SyncTableName = (typeof SYNC_TABLES)[number];
