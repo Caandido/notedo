@@ -10,6 +10,12 @@ on:
 permissions:
   contents: write
 
+# Supabase é público por design (anon key + URL vão no bundle do cliente;
+# a segurança é via RLS). Inlinado no build estático via NEXT_PUBLIC_*.
+env:
+  NEXT_PUBLIC_SUPABASE_URL: https://srfhdopqbuykcvorxifh.supabase.co
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNyZmhkb3BxYnV5a2N2b3J4aWZoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAwMTA1ODAsImV4cCI6MjA5NTU4NjU4MH0.-QtyDRjdxAgN1oJec6r5JAnvvAtFKl0eagqShzIDo-A
+
 jobs:
   build-windows:
     name: Build Windows (.exe)
