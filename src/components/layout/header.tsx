@@ -1,9 +1,11 @@
 "use client";
 
 import * as React from "react";
-import { Bell, Plus, Search } from "lucide-react";
+import Link from "next/link";
+import { Bell, Columns2, Plus, Search } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 interface HeaderProps {
@@ -39,6 +41,14 @@ export function Header({ title, subtitle }: HeaderProps) {
             ⌘K
           </kbd>
         </div>
+        <Link
+          href="/split"
+          aria-label="Tela dividida"
+          title="Tela dividida — abrir matérias lado a lado"
+          className={cn(buttonVariants({ variant: "ghost", size: "icon" }))}
+        >
+          <Columns2 className="size-4" />
+        </Link>
         <Button variant="ghost" size="icon" aria-label="Notificações">
           <Bell className="size-4" />
         </Button>

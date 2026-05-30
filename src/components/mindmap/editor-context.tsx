@@ -8,12 +8,17 @@ type MindMapCtxValue = {
   updateNodeText: (id: string, text: string) => void;
   updateNodeColor: (id: string, color: string | null) => void;
   updateNodeContent: (id: string, content: unknown) => void;
+  /** Mescla campos arbitrários em node.data (cor, stroke, shape, etc.). */
+  patchNodeData: (id: string, patch: Record<string, unknown>) => void;
+  deleteNode: (id: string) => void;
 };
 
 export const MindMapCtx = React.createContext<MindMapCtxValue>({
   updateNodeText: () => {},
   updateNodeColor: () => {},
   updateNodeContent: () => {},
+  patchNodeData: () => {},
+  deleteNode: () => {},
 });
 
 export const useMindMapCtx = () => React.useContext(MindMapCtx);

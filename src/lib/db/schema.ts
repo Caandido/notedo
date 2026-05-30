@@ -124,6 +124,8 @@ export type GradeRow = SyncMeta & {
  * Slides importados (Canva) guardam só o caminho da imagem no Storage + dims;
  * o binário fica em `_blobs` (cache local) e no bucket `mindmap-slides`.
  */
+export type MindMapShape = "rect" | "ellipse" | "diamond";
+
 export type MindMapNode = {
   id: string;
   x: number;
@@ -131,23 +133,42 @@ export type MindMapNode = {
   width?: number;
   height?: number;
   /**
-   * "text"  = nó simples (textarea);
-   * "slide" = imagem (slide importado do Canva/PDF OU upload solto) no Storage;
-   * "rich"  = conteúdo rico (TipTap: tabelas, fórmulas, links, imagem por URL).
+   * "text"   = nó simples (textarea);
+   * "slide"  = imagem (slide importado do Canva/PDF OU upload solto) no Storage;
+   * "rich"   = conteúdo rico (TipTap: tabelas, fórmulas, links, imagem por URL);
+   * "sticky" = post-it colorido com texto;
+   * "shape"  = forma (retângulo/elipse/losango) com texto e cor;
+   * "frame"  = moldura/seção pra agrupar visualmente (fica atrás);
+   * "draw"   = traço à mão livre (SVG path).
    */
-  kind: "text" | "slide" | "rich";
+  kind: "text" | "slide" | "rich" | "sticky" | "shape" | "frame" | "draw";
   text?: string;
   color?: string | null;
+  /** Cor de borda/traço (shape/frame). */
+  stroke?: string | null;
+  /** Presente quando kind === "shape". */
+  shape?: MindMapShape;
   /** Presente quando kind === "slide". path = chave no bucket/_blobs. */
   slide?: { path: string; w: number; h: number } | null;
   /** Presente quando kind === "rich". JSON do TipTap. */
   content?: unknown;
+  /**
+   * Presente quando kind === "draw". d = path SVG relativo à caixa (w×h)
+   * de criação; o nó escala via viewBox fixo (w,h).
+   */
+  draw?: { d: string; stroke: string; width: number; w: number; h: number } | null;
 };
 
 export type MindMapEdge = {
   id: string;
   source: string;
   target: string;
+  /** Estilo da linha. */
+  variant?: "default" | "straight" | "smoothstep";
+  label?: string;
+  color?: string | null;
+  /** Ponta de seta no destino (default true). */
+  arrow?: boolean;
 };
 
 export type MindMapData = {

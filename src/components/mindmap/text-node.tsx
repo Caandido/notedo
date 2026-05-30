@@ -31,7 +31,6 @@ export function TextNode({ id, data, selected }: NodeProps) {
         rows={rows}
         value={d.text ?? ""}
         onChange={(e) => updateNodeText(id, e.target.value)}
-        onPointerDown={(e) => e.stopPropagation()}
         placeholder="Digite…"
       />
       <Handle type="source" position={Position.Bottom} className="!size-2" />
