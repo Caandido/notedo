@@ -8,6 +8,7 @@ import {
   BookOpen,
   Calendar,
   ClipboardList,
+  Columns2,
   GraduationCap,
   LayoutDashboard,
   LogOut,
@@ -35,6 +36,7 @@ const PRIMARY: Item[] = [
 ];
 
 const MORE: Item[] = [
+  { href: "/split", label: "Tela dividida", icon: Columns2 },
   { href: "/notes", label: "Notas", icon: GraduationCap },
   { href: "/mindmaps", label: "Mapas mentais", icon: Network },
   { href: "/activities", label: "Atividades", icon: ClipboardList },

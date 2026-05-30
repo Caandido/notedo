@@ -10,6 +10,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ClipboardList,
+  Columns2,
   GraduationCap,
   LayoutDashboard,
   LogOut,
@@ -28,6 +29,7 @@ const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/timer", label: "Cronômetro", icon: Timer },
   { href: "/subjects", label: "Matérias", icon: BookOpen },
+  { href: "/split", label: "Tela dividida", icon: Columns2 },
   { href: "/notes", label: "Notas", icon: GraduationCap },
   { href: "/mindmaps", label: "Mapas mentais", icon: Network },
   { href: "/activities", label: "Atividades", icon: ClipboardList },
@@ -50,9 +52,31 @@ export function Sidebar() {
       )}
     >
       <div className="flex h-14 items-center gap-2 px-4">
-        <div className="flex size-7 items-center justify-center rounded-md bg-[var(--color-primary)] text-[var(--color-primary-foreground)]">
-          <span className="text-sm font-bold">N</span>
-        </div>
+        <svg viewBox="0 0 256 256" className="size-7 rounded-md" aria-hidden>
+          <defs>
+            <linearGradient id="sb-logo" x1="0" y1="0" x2="256" y2="256" gradientUnits="userSpaceOnUse">
+              <stop offset="0" stopColor="#4f46e5" />
+              <stop offset="0.52" stopColor="#7c3aed" />
+              <stop offset="1" stopColor="#9333ea" />
+            </linearGradient>
+            <linearGradient id="sb-hl" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0" stopColor="#fbbf24" />
+              <stop offset="1" stopColor="#fb923c" />
+            </linearGradient>
+          </defs>
+          <rect width="256" height="256" fill="url(#sb-logo)" />
+          <g transform="rotate(-6 128 151)">
+            <rect x="80" y="142" width="96" height="22" rx="11" fill="url(#sb-hl)" fillOpacity="0.92" />
+          </g>
+          <path
+            d="M92 176 L92 80 L164 176 L164 80"
+            fill="none"
+            stroke="#fafafa"
+            strokeWidth="28"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
         {!collapsed && (
           <span className="text-sm font-semibold tracking-tight">Notedo</span>
         )}
