@@ -26,6 +26,7 @@ import { gradeColorByPercent } from "@/components/grades/grade-styles";
 import { cn, formatDuration, formatHours } from "@/lib/utils";
 import { useRepoQuery } from "@/lib/db/use-repo";
 import { getGradesForSubject, getSubjectDetail } from "@/lib/queries";
+import { subjectIcon } from "@/lib/subject-icons";
 
 const priorityLabel = {
   low: "Baixa",
@@ -101,10 +102,17 @@ function SubjectDetailContent() {
                 border: `1px solid ${subject.color}66`,
               }}
             >
-              <span
-                className="size-3 rounded-full"
-                style={{ backgroundColor: subject.color }}
-              />
+              {subject.icon ? (
+                (() => {
+                  const Icon = subjectIcon(subject.icon);
+                  return <Icon className="size-5" style={{ color: subject.color }} />;
+                })()
+              ) : (
+                <span
+                  className="size-3 rounded-full"
+                  style={{ backgroundColor: subject.color }}
+                />
+              )}
             </span>
             <div className="flex flex-col gap-1">
               <div className="flex items-center gap-2">

@@ -11,12 +11,14 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { archiveSubject } from "@/features/subjects/actions";
 import { formatHours } from "@/lib/utils";
+import { subjectIcon } from "@/lib/subject-icons";
 
 interface SubjectRowProps {
   subject: {
     id: string;
     name: string;
     color: string;
+    icon?: string | null;
     priority: "low" | "medium" | "high";
     progress: number;
     tags: string[];
@@ -54,18 +56,23 @@ export function SubjectRow({ subject }: SubjectRowProps) {
       <Card className="group transition-shadow hover:shadow-md">
         <CardContent className="flex items-center gap-4 p-4">
           <div
-            className="size-9 shrink-0 rounded-md"
+            className="flex size-9 shrink-0 items-center justify-center rounded-md"
             style={{
               backgroundColor: `${subject.color}33`,
               border: `1px solid ${subject.color}66`,
             }}
           >
-            <div className="flex h-full w-full items-center justify-center">
+            {subject.icon ? (
+              (() => {
+                const Icon = subjectIcon(subject.icon);
+                return <Icon className="size-4" style={{ color: subject.color }} />;
+              })()
+            ) : (
               <span
                 className="size-2 rounded-full"
                 style={{ backgroundColor: subject.color }}
               />
-            </div>
+            )}
           </div>
 
           <div className="min-w-0 flex-1">

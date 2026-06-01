@@ -10,6 +10,7 @@ const COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 export type CreateSubjectInput = {
   name: string;
   color: string;
+  icon?: string | null;
   priority?: "low" | "medium" | "high";
   tags?: string[];
 };
@@ -29,7 +30,7 @@ export async function createSubject(input: CreateSubjectInput) {
     userId,
     name,
     color: input.color,
-    icon: null,
+    icon: input.icon ?? null,
     priority: (input.priority ?? "medium").toUpperCase() as
       | "LOW"
       | "MEDIUM"
@@ -69,6 +70,7 @@ export type UpdateSubjectInput = {
   id: string;
   name: string;
   color: string;
+  icon?: string | null;
   priority: "low" | "medium" | "high";
   tags?: string[];
 };
@@ -89,6 +91,7 @@ export async function updateSubject(input: UpdateSubjectInput) {
   await writeUpdate("subjects", input.id, {
     name,
     color: input.color,
+    icon: input.icon ?? null,
     priority: input.priority.toUpperCase() as "LOW" | "MEDIUM" | "HIGH",
     tags: (input.tags ?? []).map((t) => t.trim()).filter(Boolean).slice(0, 8),
   });

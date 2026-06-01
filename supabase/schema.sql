@@ -167,14 +167,16 @@ create table if not exists public.profiles (
 -- ─────────────────────────────────────────────────────────────────────────
 -- Lixeira: trashed_at em todas as tabelas de dados (soft-delete restaurável).
 -- O cliente apaga de vez após 12 dias (vira deleted_at). Idempotente.
-do $$
-declare t text;
-begin
-  foreach t in array array['subjects','topics','sessions','goals','reviews','flashcards','events','grades','mindmaps','activities']
-  loop
-    execute format('alter table public.%I add column if not exists trashed_at timestamptz;', t);
-  end loop;
-end $$;
+alter table public.subjects   add column if not exists trashed_at timestamptz;
+alter table public.topics     add column if not exists trashed_at timestamptz;
+alter table public.sessions   add column if not exists trashed_at timestamptz;
+alter table public.goals      add column if not exists trashed_at timestamptz;
+alter table public.reviews    add column if not exists trashed_at timestamptz;
+alter table public.flashcards add column if not exists trashed_at timestamptz;
+alter table public.events     add column if not exists trashed_at timestamptz;
+alter table public.grades     add column if not exists trashed_at timestamptz;
+alter table public.mindmaps   add column if not exists trashed_at timestamptz;
+alter table public.activities add column if not exists trashed_at timestamptz;
 
 create index if not exists subjects_user_updated   on public.subjects   (user_id, updated_at);
 create index if not exists topics_user_updated      on public.topics     (user_id, updated_at);

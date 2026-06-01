@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { EditorContent, useEditor } from "@tiptap/react";
+import { EditorContent, useEditor, useEditorState } from "@tiptap/react";
 import { StarterKit } from "@tiptap/starter-kit";
 import { Placeholder } from "@tiptap/extension-placeholder";
 import { Link } from "@tiptap/extension-link";
@@ -145,74 +145,117 @@ export function RichEditor({
 
   if (!editor) return null;
 
+  return <RichEditorInner editor={editor} saveStatus={saveStatus} addLink={addLink} addImage={addImage} addTable={addTable} addMath={addMath} />;
+}
+
+/**
+ * Toolbar + conteúdo. Separado pra usar useEditorState: no TipTap v3 o useEditor
+ * NÃO re-renderiza a cada transação, então `editor.isActive(...)` lido direto no
+ * render ficava congelado (os botões nunca acendiam — parecia que "não
+ * funcionava"). useEditorState assina as mudanças e devolve um snapshot reativo.
+ */
+function RichEditorInner({
+  editor,
+  saveStatus,
+  addLink,
+  addImage,
+  addTable,
+  addMath,
+}: {
+  editor: NonNullable<ReturnType<typeof useEditor>>;
+  saveStatus: SaveStatus;
+  addLink: () => void;
+  addImage: () => void;
+  addTable: () => void;
+  addMath: (block: boolean) => void;
+}) {
+  const state = useEditorState({
+    editor,
+    selector: ({ editor: e }) => ({
+      h1: e.isActive("heading", { level: 1 }),
+      h2: e.isActive("heading", { level: 2 }),
+      h3: e.isActive("heading", { level: 3 }),
+      bold: e.isActive("bold"),
+      italic: e.isActive("italic"),
+      strike: e.isActive("strike"),
+      code: e.isActive("code"),
+      bulletList: e.isActive("bulletList"),
+      orderedList: e.isActive("orderedList"),
+      blockquote: e.isActive("blockquote"),
+      link: e.isActive("link"),
+      canUndo: e.can().undo(),
+      canRedo: e.can().redo(),
+    }),
+  });
+
   return (
     <div className="space-y-3">
       <div className="sticky top-14 z-10 -mx-1 flex flex-wrap items-center gap-0.5 rounded-md border border-[var(--color-border)] bg-[var(--color-card)]/95 p-1 backdrop-blur-md">
         <ToolbarButton
           icon={Heading1}
-          active={editor.isActive("heading", { level: 1 })}
+          active={state.h1}
           onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
           aria="Título 1"
         />
         <ToolbarButton
           icon={Heading2}
-          active={editor.isActive("heading", { level: 2 })}
+          active={state.h2}
           onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
           aria="Título 2"
         />
         <ToolbarButton
           icon={Heading3}
-          active={editor.isActive("heading", { level: 3 })}
+          active={state.h3}
           onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
           aria="Título 3"
         />
         <Divider />
         <ToolbarButton
           icon={Bold}
-          active={editor.isActive("bold")}
+          active={state.bold}
           onClick={() => editor.chain().focus().toggleBold().run()}
           aria="Negrito"
         />
         <ToolbarButton
           icon={Italic}
-          active={editor.isActive("italic")}
+          active={state.italic}
           onClick={() => editor.chain().focus().toggleItalic().run()}
           aria="Itálico"
         />
         <ToolbarButton
           icon={Strikethrough}
-          active={editor.isActive("strike")}
+          active={state.strike}
           onClick={() => editor.chain().focus().toggleStrike().run()}
           aria="Tachado"
         />
         <ToolbarButton
           icon={Code2}
-          active={editor.isActive("code")}
+          active={state.code}
           onClick={() => editor.chain().focus().toggleCode().run()}
           aria="Código inline"
         />
         <Divider />
         <ToolbarButton
           icon={List}
-          active={editor.isActive("bulletList")}
+          active={state.bulletList}
           onClick={() => editor.chain().focus().toggleBulletList().run()}
           aria="Lista"
         />
         <ToolbarButton
           icon={ListOrdered}
-          active={editor.isActive("orderedList")}
+          active={state.orderedList}
           onClick={() => editor.chain().focus().toggleOrderedList().run()}
           aria="Lista numerada"
         />
         <ToolbarButton
           icon={Quote}
-          active={editor.isActive("blockquote")}
+          active={state.blockquote}
           onClick={() => editor.chain().focus().toggleBlockquote().run()}
           aria="Citação"
         />
         <ToolbarButton
           icon={LinkIcon}
-          active={editor.isActive("link")}
+          active={state.link}
           onClick={addLink}
           aria="Link"
         />
@@ -234,13 +277,13 @@ export function RichEditor({
         <ToolbarButton
           icon={Undo2}
           onClick={() => editor.chain().focus().undo().run()}
-          disabled={!editor.can().undo()}
+          disabled={!state.canUndo}
           aria="Desfazer"
         />
         <ToolbarButton
           icon={Redo2}
           onClick={() => editor.chain().focus().redo().run()}
-          disabled={!editor.can().redo()}
+          disabled={!state.canRedo}
           aria="Refazer"
         />
         <div className="ml-auto pr-1 text-xs text-[var(--color-muted-foreground)]">

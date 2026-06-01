@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { updateSubject } from "@/features/subjects/actions";
 import { cn } from "@/lib/utils";
+import { IconPicker } from "@/components/subjects/icon-picker";
 
 const SUBJECT_COLORS = [
   "#a78bfa",
@@ -31,6 +32,7 @@ interface EditSubjectFormProps {
     id: string;
     name: string;
     color: string;
+    icon?: string | null;
     priority: "low" | "medium" | "high";
     tags: string[];
   };
@@ -41,6 +43,7 @@ export function EditSubjectForm({ subject }: EditSubjectFormProps) {
   const [open, setOpen] = React.useState(false);
   const [name, setName] = React.useState(subject.name);
   const [color, setColor] = React.useState(subject.color);
+  const [icon, setIcon] = React.useState<string | null>(subject.icon ?? null);
   const [priority, setPriority] = React.useState(subject.priority);
   const [tagsRaw, setTagsRaw] = React.useState(subject.tags.join(", "));
   const [submitting, setSubmitting] = React.useState(false);
@@ -50,6 +53,7 @@ export function EditSubjectForm({ subject }: EditSubjectFormProps) {
     setOpen(false);
     setName(subject.name);
     setColor(subject.color);
+    setIcon(subject.icon ?? null);
     setPriority(subject.priority);
     setTagsRaw(subject.tags.join(", "));
     setError(null);
@@ -65,6 +69,7 @@ export function EditSubjectForm({ subject }: EditSubjectFormProps) {
       id: subject.id,
       name,
       color,
+      icon,
       priority,
       tags,
     });
@@ -143,6 +148,13 @@ export function EditSubjectForm({ subject }: EditSubjectFormProps) {
                 />
               ))}
             </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-[var(--color-muted-foreground)]">
+              Ícone
+            </label>
+            <IconPicker value={icon} onChange={setIcon} accent={color} />
           </div>
 
           <div className="space-y-1.5">

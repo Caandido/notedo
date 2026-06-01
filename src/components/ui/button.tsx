@@ -37,17 +37,30 @@ const buttonVariants = cva(
 interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement>,
     VariantProps<typeof buttonVariants> {
+  /**
+   * Renderiza o único filho no lugar do <button> (ex.: um <Link>), aplicando
+   * as classes do botão. Evita aninhar <a> dentro de <button> e impede que a
+   * prop `asChild` vaze pro DOM.
+   */
   asChild?: boolean;
 }
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, ...props }, ref) => {
+  ({ className, variant, size, asChild, children, ...props }, ref) => {
+    const classes = cn(buttonVariants({ variant, size, className }));
+
+    if (asChild && React.isValidElement(children)) {
+      const child = children as React.ReactElement<{ className?: string }>;
+      return React.cloneElement(child, {
+        className: cn(classes, child.props.className),
+        ...props,
+      });
+    }
+
     return (
-      <button
-        ref={ref}
-        className={cn(buttonVariants({ variant, size, className }))}
-        {...props}
-      />
+      <button ref={ref} className={classes} {...props}>
+        {children}
+      </button>
     );
   }
 );

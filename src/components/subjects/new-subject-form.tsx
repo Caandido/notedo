@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { createSubject } from "@/features/subjects/actions";
 import { cn } from "@/lib/utils";
+import { IconPicker } from "@/components/subjects/icon-picker";
 
 const SUBJECT_COLORS = [
   "#a78bfa",
@@ -31,6 +32,7 @@ export function NewSubjectForm() {
   const [open, setOpen] = React.useState(false);
   const [name, setName] = React.useState("");
   const [color, setColor] = React.useState(SUBJECT_COLORS[0]);
+  const [icon, setIcon] = React.useState<string | null>(null);
   const [priority, setPriority] =
     React.useState<"low" | "medium" | "high">("medium");
   const [tagsRaw, setTagsRaw] = React.useState("");
@@ -41,6 +43,7 @@ export function NewSubjectForm() {
     setOpen(false);
     setName("");
     setColor(SUBJECT_COLORS[0]);
+    setIcon(null);
     setPriority("medium");
     setTagsRaw("");
     setError(null);
@@ -58,7 +61,7 @@ export function NewSubjectForm() {
       .split(",")
       .map((t) => t.trim())
       .filter(Boolean);
-    const result = await createSubject({ name, color, priority, tags });
+    const result = await createSubject({ name, color, icon, priority, tags });
     setSubmitting(false);
     if (result.ok) {
       close();
@@ -130,6 +133,13 @@ export function NewSubjectForm() {
                 />
               ))}
             </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-[var(--color-muted-foreground)]">
+              Ícone
+            </label>
+            <IconPicker value={icon} onChange={setIcon} accent={color} />
           </div>
 
           <div className="space-y-1.5">
