@@ -53,13 +53,13 @@ export function Sidebar() {
       <div className="flex h-14 items-center gap-2 px-4">
         <svg
           viewBox="0 0 256 256"
-          className="size-7 rounded-md bg-[var(--color-foreground)]"
+          className="size-7 rounded-md bg-[var(--color-primary)]"
           aria-hidden
         >
           <path
             d="M92 176 L92 80 L164 176 L164 80"
             fill="none"
-            stroke="var(--color-background)"
+            stroke="var(--color-primary-foreground)"
             strokeWidth="28"
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -98,7 +98,7 @@ export function Sidebar() {
           className={cn(
             "flex h-9 items-center gap-2.5 rounded-md px-2.5 text-sm transition-colors",
             pathname.startsWith("/trash")
-              ? "bg-[var(--color-accent)] text-[var(--color-accent-foreground)]"
+              ? "bg-[var(--color-primary)]/12 font-medium text-[var(--color-primary)]"
               : "text-[var(--color-muted-foreground)] hover:bg-[var(--color-accent)] hover:text-[var(--color-foreground)]"
           )}
         >
@@ -110,7 +110,7 @@ export function Sidebar() {
           className={cn(
             "flex h-9 items-center gap-2.5 rounded-md px-2.5 text-sm transition-colors",
             pathname.startsWith("/settings")
-              ? "bg-[var(--color-accent)] text-[var(--color-accent-foreground)]"
+              ? "bg-[var(--color-primary)]/12 font-medium text-[var(--color-primary)]"
               : "text-[var(--color-muted-foreground)] hover:bg-[var(--color-accent)] hover:text-[var(--color-foreground)]"
           )}
         >

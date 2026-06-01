@@ -98,7 +98,7 @@ export function MobileNav() {
                 className={cn(
                   "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors",
                   isActive(pathname, href)
-                    ? "bg-[var(--color-accent)] text-[var(--color-accent-foreground)]"
+                    ? "bg-[var(--color-primary)]/12 font-medium text-[var(--color-primary)]"
                     : "hover:bg-[var(--color-accent)]"
                 )}
               >
@@ -130,7 +130,7 @@ export function MobileNav() {
               className={cn(
                 "flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium transition-colors",
                 active
-                  ? "text-[var(--color-foreground)]"
+                  ? "text-[var(--color-primary)]"
                   : "text-[var(--color-muted-foreground)]"
               )}
             >
