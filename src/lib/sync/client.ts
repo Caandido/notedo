@@ -41,6 +41,8 @@ export function supabase(): SupabaseClient {
 export function redirectUrl(): string {
   if (typeof window === "undefined") return "";
   if (isCapacitor) return "app.notedo://auth-callback";
-  if (isTauri) return "http://localhost:8788/auth-callback";
+  // 127.0.0.1 (não "localhost") pra casar com o bind IPv4 do loopback no Rust —
+  // no Windows "localhost" pode resolver pra ::1 (IPv6) e recusar a conexão.
+  if (isTauri) return "http://127.0.0.1:8788/auth-callback";
   return window.location.origin + "/";
 }

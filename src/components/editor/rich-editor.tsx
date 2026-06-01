@@ -56,6 +56,10 @@ export function RichEditor({
     extensions: [
       StarterKit.configure({
         heading: { levels: [1, 2, 3] },
+        // StarterKit v3 já traz o Link embutido; desligamos aqui pra não duplicar
+        // a extensão (nome "link" repetido gera warning e conflito de keymap) e
+        // usamos a nossa configuração explícita abaixo.
+        link: false,
       }),
       Placeholder.configure({ placeholder }),
       Link.configure({

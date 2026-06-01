@@ -8,11 +8,15 @@ O código do app já chama `signInWithOAuth` (botões na tela de login). Falta s
 Adicione em **Redirect URLs**:
 
 ```
-http://localhost:3000/          (dev)
-https://<seu-site>.vercel.app/  (produção web, quando publicar)
-app.notedo://auth-callback      (Android — Fase 6)
-http://localhost:8788/auth-callback  (Windows/Tauri — Fase 6)
+http://localhost:3000/                 (dev)
+https://<seu-site>.vercel.app/         (produção web, quando publicar)
+app.notedo://auth-callback             (Android)
+http://127.0.0.1:8788/auth-callback    (Windows/Tauri)
 ```
+
+> **Importante (desktop):** use exatamente `http://127.0.0.1:8788/auth-callback`
+> (com `127.0.0.1`, não `localhost`). O app sobe um servidor loopback nessa porta
+> pra capturar o retorno do login social.
 
 Em **Site URL**, ponha a URL de produção (ou localhost em dev).
 
@@ -36,5 +40,10 @@ Em **Site URL**, ponha a URL de produção (ou localhost em dev).
 
 ## Resultado
 
-- **Site**: clicar em Google/GitHub redireciona, autentica e volta logado. ✅ (Fase 5)
-- **Android/Windows**: precisa do deep link / loopback tratados no app (Fase 6).
+- **Site**: clicar em Google/GitHub redireciona, autentica e volta logado. ✅
+- **Android**: deep link `app.notedo://auth-callback` tratado no app. ✅
+- **Windows (Tauri)**: loopback em `127.0.0.1:8788` tratado no app (comando Rust
+  `oauth_login`). ✅ — basta ter a redirect URL acima cadastrada no Supabase.
+
+> E-mail/senha e link mágico funcionam em todas as plataformas sem nenhuma
+> dessas configurações de provedor social.
