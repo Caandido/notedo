@@ -49,9 +49,14 @@ export function Header({ title, subtitle }: HeaderProps) {
         >
           <Columns2 className="size-4" />
         </Link>
-        <Button variant="ghost" size="icon" aria-label="Notificações">
+        <Link
+          href="/settings"
+          aria-label="Notificações"
+          title="Notificações"
+          className={cn(buttonVariants({ variant: "ghost", size: "icon" }))}
+        >
           <Bell className="size-4" />
-        </Button>
+        </Link>
         <ThemeToggle />
         <Button size="sm" className="gap-1.5">
           <Plus className="size-3.5" />

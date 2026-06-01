@@ -2,13 +2,17 @@
  * Metadados de sincronização presentes em TODAS as linhas.
  * - updatedAt: ms epoch; base do last-write-wins.
  * - _dirty: 1 = mudança local ainda não enviada ao servidor.
- * Deletes NÃO usam soft-delete in-place (evita vazar "fantasma" nos reads):
- * são hard-delete local + registro em `_tombstones` (ver TombstoneRow).
+ * - trashedAt: ms epoch em que foi mandado pra Lixeira (null = item vivo).
+ *   Itens na lixeira são filtrados dos reads de listagem e, após 12 dias (ou
+ *   "excluir definitivo"), viram hard-delete local + `_tombstones` (delete real
+ *   que propaga). Itens de uma mesma ação em cascata compartilham o mesmo
+ *   `trashedAt` (ms exato) — serve de chave de agrupamento na UI da Lixeira.
  * O prefixo "_" marca campos locais que nunca vão crus ao Supabase (ver mappers).
  */
 export type SyncMeta = {
   updatedAt: number;
   _dirty: 0 | 1;
+  trashedAt?: number | null;
 };
 
 export type LocalUser = SyncMeta & {

@@ -18,6 +18,7 @@ import {
   Settings,
   Target,
   Timer,
+  Trash2,
   X,
 } from "lucide-react";
 
@@ -41,6 +42,7 @@ const MORE: Item[] = [
   { href: "/goals", label: "Metas", icon: Target },
   { href: "/reviews", label: "Revisões", icon: Repeat },
   { href: "/stats", label: "Estatísticas", icon: BarChart3 },
+  { href: "/trash", label: "Lixeira", icon: Trash2 },
   { href: "/settings", label: "Configurações", icon: Settings },
 ];
 

@@ -10,6 +10,7 @@ import { getWatermark, setWatermark } from "./watermark";
 import {
   TABLE_DESCRIPTORS,
   fromRemote,
+  setTrashedAtSupported,
   toRemote,
   type TableDesc,
 } from "./tables";
@@ -32,14 +33,32 @@ const byLocal = new Map(TABLE_DESCRIPTORS.map((d) => [d.local, d]));
 
 // ─── Push ────────────────────────────────────────────────────────────────
 
+/** Erro do PostgREST quando a coluna `trashed_at` ainda não existe no servidor. */
+function isMissingTrashedAt(error: unknown): boolean {
+  const e = error as { code?: string; message?: string } | null;
+  const msg = (e?.message ?? "").toLowerCase();
+  return (
+    e?.code === "PGRST204" ||
+    e?.code === "42703" ||
+    (msg.includes("trashed_at") && msg.includes("column"))
+  );
+}
+
 async function pushTable(desc: TableDesc): Promise<void> {
   const dirty = await ref(desc.local).where("_dirty").equals(1).toArray();
   if (!dirty.length) return;
   for (const part of chunk(dirty, desc.chunk)) {
-    const payload = part.map((r) => toRemote(desc, r));
-    const { error } = await supabase()
+    let { error } = await supabase()
       .from(desc.remote)
-      .upsert(payload, { onConflict: "id" });
+      .upsert(part.map((r) => toRemote(desc, r)), { onConflict: "id" });
+    // Servidor sem a coluna trashed_at (SQL novo não rodado): desliga o campo e
+    // tenta de novo sem ele. O resto do sync continua normal.
+    if (error && isMissingTrashedAt(error)) {
+      setTrashedAtSupported(false);
+      ({ error } = await supabase()
+        .from(desc.remote)
+        .upsert(part.map((r) => toRemote(desc, r)), { onConflict: "id" }));
+    }
     if (error) throw error;
     const ids = part.map((r) => r.id as string);
     await ref(desc.local).where("id").anyOf(ids).modify({ _dirty: 0 });

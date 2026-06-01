@@ -6,7 +6,7 @@ import { getCurrentUserId } from "@/lib/auth";
 import { invalidateAll } from "@/lib/db/use-repo";
 import type { MindMapData, MindMapNode } from "@/lib/db/schema";
 import { importSlideFiles } from "@/lib/mindmap/import";
-import { cacheBlob, deleteSlidesForMap, slidePath } from "@/lib/sync/storage";
+import { cacheBlob, slidePath } from "@/lib/sync/storage";
 
 const EMPTY: MindMapData = { nodes: [], edges: [] };
 
@@ -62,12 +62,9 @@ export async function deleteMindMap(id: string) {
   if (!map || map.userId !== userId)
     return { ok: false as const, error: "Mapa não encontrado." };
 
-  const paths = (map.data?.nodes ?? [])
-    .map((n) => n.slide?.path)
-    .filter((p): p is string => Boolean(p));
-
+  // Vai pra Lixeira: NÃO apaga os slides do Storage aqui (o mapa é restaurável).
+  // A limpeza definitiva acontece na purga (após 12 dias / excluir definitivo).
   await writeDelete("mindmaps", id);
-  await deleteSlidesForMap(userId, id, paths);
   invalidateAll();
   return { ok: true as const };
 }

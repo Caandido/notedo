@@ -16,6 +16,18 @@ export function invalidateAll() {
   listeners.forEach((l) => l());
 }
 
+/**
+ * Assina o sinal de invalidação (toda mutação chama invalidateAll). Usado por
+ * serviços de fundo (notificações, widget) pra reagir a mudanças de dados.
+ * Retorna a função de cancelamento.
+ */
+export function subscribeInvalidate(fn: () => void): () => void {
+  listeners.add(fn);
+  return () => {
+    listeners.delete(fn);
+  };
+}
+
 function useInvalidationVersion() {
   const [v, setV] = React.useState(invalidateCounter);
   React.useEffect(() => {

@@ -13,6 +13,8 @@ export type TableDesc = {
   fields: Record<string, Field>;
 };
 
+export type SyncLocalTable = TableDesc["local"];
+
 const ID: Field = { col: "id" };
 const UID: Field = { col: "user_id" };
 const CREATED: Field = { col: "created_at", ts: true };
@@ -195,6 +197,20 @@ export const TABLE_DESCRIPTORS: TableDesc[] = [
   },
 ];
 
+// `trashed_at` (coluna da Lixeira) está em TODAS as tabelas. Injetado aqui pra
+// não repetir em cada descritor acima.
+const TRASHED: Field = { col: "trashed_at", ts: true };
+for (const d of TABLE_DESCRIPTORS) d.fields.trashedAt = TRASHED;
+
+// Gate de compatibilidade: o servidor pode ainda não ter a coluna `trashed_at`
+// (usuário não rodou o SQL novo). Na 1ª falha de push por coluna inexistente, o
+// engine chama setTrashedAtSupported(false) e o toRemote para de enviar o campo —
+// o resto do sync segue normal. Volta a enviar quando a coluna existir.
+let trashedAtSupported = true;
+export function setTrashedAtSupported(v: boolean): void {
+  trashedAtSupported = v;
+}
+
 /** Linha local -> payload remoto (snake_case, ISO). Marca deleted_at=null (live). */
 export function toRemote(
   desc: TableDesc,
@@ -202,6 +218,7 @@ export function toRemote(
 ): Record<string, unknown> {
   const out: Record<string, unknown> = { deleted_at: null };
   for (const [localKey, f] of Object.entries(desc.fields)) {
+    if (localKey === "trashedAt" && !trashedAtSupported) continue;
     const v = row[localKey];
     out[f.col] = f.ts && typeof v === "number" ? new Date(v).toISOString() : v ?? null;
   }

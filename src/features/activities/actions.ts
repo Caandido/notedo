@@ -1,7 +1,13 @@
 "use client";
 
 import { cuid, db } from "@/lib/db";
-import { writeAdd, writeDelete, writeUpdate } from "@/lib/db/write";
+import {
+  newTrashStamp,
+  writeAdd,
+  writeDelete,
+  writePurge,
+  writeUpdate,
+} from "@/lib/db/write";
 import { getCurrentUserId } from "@/lib/auth";
 import { invalidateAll } from "@/lib/db/use-repo";
 import { dateInputToMs } from "@/lib/utils";
@@ -27,7 +33,8 @@ const STATUSES: ActivityStatus[] = ["TODO", "DOING", "DONE"];
 async function syncMirrorEvent(a: ActivityRow): Promise<void> {
   const existing = await db().events.get(a.id);
   if (a.dueDate == null) {
-    if (existing) await writeDelete("events", a.id);
+    // Espelho interno: remoção definitiva (não vai pra Lixeira como "evento solto").
+    if (existing) await writePurge("events", [a.id]);
     return;
   }
   const fields = {
@@ -177,8 +184,11 @@ export async function deleteActivity(id: string) {
   const a = await db().activities.get(id);
   if (!a || a.userId !== userId)
     return { ok: false as const, error: "Atividade não encontrada." };
-  await writeDelete("activities", id);
-  if (await db().events.get(id)) await writeDelete("events", id);
+  // Atividade + evento-espelho vão juntos pra Lixeira (mesmo stamp = mesmo grupo;
+  // restaurar/excluir-definitivo agem nos dois de uma vez).
+  const stamp = newTrashStamp();
+  await writeDelete("activities", id, stamp);
+  if (await db().events.get(id)) await writeDelete("events", id, stamp);
   invalidateAll();
   return { ok: true as const };
 }

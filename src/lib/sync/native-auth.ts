@@ -17,6 +17,21 @@ async function handleCallbackUrl(url: string): Promise<void> {
   }
 }
 
+/**
+ * Deep links de navegação do widget (ex.: `app.notedo://timer` do botão
+ * "iniciar timer"). Roteia pra rota interna correspondente.
+ */
+function handleNavUrl(url: string): void {
+  try {
+    if (url.includes("auth-callback")) return;
+    const m = /^app\.notedo:\/\/([a-z0-9/_-]+)/i.exec(url);
+    const route = m?.[1]?.replace(/\/+$/, "");
+    if (route) window.location.assign("/" + route);
+  } catch {
+    /* noop */
+  }
+}
+
 let listenerReady = false;
 
 export async function initNativeAuth(): Promise<void> {
@@ -25,6 +40,7 @@ export async function initNativeAuth(): Promise<void> {
     listenerReady = true;
     const { App } = await import("@capacitor/app");
     await App.addListener("appUrlOpen", ({ url }) => {
+      handleNavUrl(url);
       void handleCallbackUrl(url).then(async () => {
         try {
           const { Browser } = await import("@capacitor/browser");

@@ -100,6 +100,9 @@ jobs:
       - name: Patch AndroidManifest (deep link OAuth)
         run: node scripts/patch-android-manifest.mjs
 
+      - name: Inject home-screen widget
+        run: node scripts/inject-android-widget.mjs
+
       - name: Generate Android icons
         run: npx @capacitor/assets generate --android --iconBackgroundColor "#0a0a0b" --iconBackgroundColorDark "#0a0a0b"
 

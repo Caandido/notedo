@@ -10,6 +10,12 @@ import type {
   StudySessionRow,
   TopicRow,
 } from "@/lib/db/schema";
+import {
+  TRASH_LABELS,
+  TRASH_RETENTION_MS,
+  TRASH_TABLES,
+  type TrashTable,
+} from "@/lib/trash/retention";
 
 function startOfDay(d: Date = new Date()): Date {
   const x = new Date(d);
@@ -35,11 +41,17 @@ function hasTopicContent(content: unknown): boolean {
   return c.content.some((n) => Array.isArray(n.content) && n.content.length > 0);
 }
 
+/** Remove itens na Lixeira (trashedAt != null). Aplicado em TODOS os reads de
+ * listagem pra itens excluídos não vazarem ("fantasmas") nas telas. */
+function live<T extends { trashedAt?: number | null }>(rows: T[]): T[] {
+  return rows.filter((r) => r.trashedAt == null);
+}
+
 async function userSubjects(userId: string) {
-  return db().subjects.where("userId").equals(userId).toArray();
+  return live(await db().subjects.where("userId").equals(userId).toArray());
 }
 async function userSessions(userId: string) {
-  return db().sessions.where("userId").equals(userId).toArray();
+  return live(await db().sessions.where("userId").equals(userId).toArray());
 }
 
 // ─── Subjects ──────────────────────────────────────────────────────────────
@@ -116,10 +128,12 @@ export async function getSubjectDetail(subjectId: string) {
   const subject = await db().subjects.get(subjectId);
   if (!subject || subject.userId !== userId) return null;
 
-  const [topics, allSessions] = await Promise.all([
+  const [topicsRaw, sessionsRaw] = await Promise.all([
     db().topics.where("subjectId").equals(subjectId).toArray(),
     db().sessions.where("subjectId").equals(subjectId).toArray(),
   ]);
+  const topics = live(topicsRaw);
+  const allSessions = live(sessionsRaw);
 
   const tree = buildTopicTree(topics, null);
   const recent = [...allSessions]
@@ -169,10 +183,12 @@ export async function getTopicDetail(topicId: string) {
     cursor = parent;
   }
 
-  const [allTopicsOfSubject, sessions] = await Promise.all([
+  const [allTopicsRaw, sessionsRaw] = await Promise.all([
     db().topics.where("subjectId").equals(topic.subjectId).toArray(),
     db().sessions.where("topicId").equals(topic.id).toArray(),
   ]);
+  const allTopicsOfSubject = live(allTopicsRaw);
+  const sessions = live(sessionsRaw);
 
   const children = buildTopicTree(allTopicsOfSubject, topic.id);
   const descendantCount =
@@ -209,10 +225,11 @@ export type TopicDetail = Awaited<ReturnType<typeof getTopicDetail>>;
 
 export async function getGoalsWithProgress() {
   const userId = getCurrentUserId();
-  const [goals, sessions] = await Promise.all([
+  const [goalsRaw, sessions] = await Promise.all([
     db().goals.where("userId").equals(userId).toArray(),
     userSessions(userId),
   ]);
+  const goals = live(goalsRaw);
   goals.sort((a, b) => (a.active === b.active ? a.createdAt - b.createdAt : a.active ? -1 : 1));
 
   const today = startOfDay().getTime();
@@ -260,11 +277,11 @@ export type GoalView = Awaited<ReturnType<typeof getGoalsWithProgress>>[number];
 
 export async function getReviewsForUser() {
   const userId = getCurrentUserId();
-  const [reviews, subjects] = await Promise.all([
+  const [reviewsRaw, subjects] = await Promise.all([
     db().reviews.where("userId").equals(userId).toArray(),
     userSubjects(userId),
   ]);
-  const pending = reviews.filter((r) => r.status === "PENDING");
+  const pending = live(reviewsRaw).filter((r) => r.status === "PENDING");
   pending.sort((a, b) => a.scheduledAt - b.scheduledAt);
 
   const subjectMap = new Map(subjects.map((s) => [s.id, s]));
@@ -296,7 +313,7 @@ export type ReviewsView = Awaited<ReturnType<typeof getReviewsForUser>>;
 
 export async function getFlashcardDecks() {
   const userId = getCurrentUserId();
-  const cards = await db().flashcards.where("userId").equals(userId).toArray();
+  const cards = live(await db().flashcards.where("userId").equals(userId).toArray());
   const now = Date.now();
   const map = new Map<string, { total: number; due: number }>();
   for (const c of cards) {
@@ -315,7 +332,7 @@ export type DeckView = Awaited<ReturnType<typeof getFlashcardDecks>>[number];
 export async function getDueFlashcards(deckName?: string) {
   const userId = getCurrentUserId();
   const now = Date.now();
-  let cards = await db().flashcards.where("userId").equals(userId).toArray();
+  let cards = live(await db().flashcards.where("userId").equals(userId).toArray());
   cards = cards.filter((c) => c.nextReview <= now);
   if (deckName) cards = cards.filter((c) => c.deck === deckName);
 
@@ -355,10 +372,11 @@ function eventToView(e: CalendarEventRow, subjects: Map<string, { id: string; na
 
 export async function getEventsForRange(start: Date, end: Date) {
   const userId = getCurrentUserId();
-  const [events, subjects] = await Promise.all([
+  const [eventsRaw, subjects] = await Promise.all([
     db().events.where("userId").equals(userId).toArray(),
     userSubjects(userId),
   ]);
+  const events = live(eventsRaw);
   const subjMap = new Map(
     subjects.map((s) => [s.id, { id: s.id, name: s.name, color: s.color }])
   );
@@ -399,10 +417,11 @@ function weightedAverage(grades: { score: number; maxScore: number; weight: numb
 
 export async function getGradesForUser() {
   const userId = getCurrentUserId();
-  const [grades, subjects] = await Promise.all([
+  const [gradesRaw, subjects] = await Promise.all([
     db().grades.where("userId").equals(userId).toArray(),
     userSubjects(userId),
   ]);
+  const grades = live(gradesRaw);
   grades.sort((a, b) => b.date - a.date);
   const subjMap = new Map(subjects.map((s) => [s.id, { id: s.id, name: s.name, color: s.color }]));
   return grades.map((g) => gradeToView(g, subjMap));
@@ -413,7 +432,7 @@ export async function getGradesForSubject(subjectId: string) {
   const userId = getCurrentUserId();
   const subject = await db().subjects.get(subjectId);
   if (!subject || subject.userId !== userId) return { grades: [], average: null };
-  const grades = await db().grades.where("subjectId").equals(subjectId).toArray();
+  const grades = live(await db().grades.where("subjectId").equals(subjectId).toArray());
   grades.sort((a, b) => b.date - a.date);
   const subjMap = new Map([[subject.id, { id: subject.id, name: subject.name, color: subject.color }]]);
   return {
@@ -424,10 +443,11 @@ export async function getGradesForSubject(subjectId: string) {
 
 export async function getGradesSummary() {
   const userId = getCurrentUserId();
-  const [grades, subjects] = await Promise.all([
+  const [gradesRaw, subjects] = await Promise.all([
     db().grades.where("userId").equals(userId).toArray(),
     userSubjects(userId),
   ]);
+  const grades = live(gradesRaw);
   const subjMap = new Map(subjects.map((s) => [s.id, { id: s.id, name: s.name, color: s.color }]));
 
   const byMap = new Map<string, GradeRow[]>();
@@ -470,11 +490,12 @@ export type GradesSummary = Awaited<ReturnType<typeof getGradesSummary>>;
 export async function getProfileSummary() {
   const userId = getCurrentUserId();
   const user = await db().users.get(userId);
-  const [subjects, sessions, flashcards] = await Promise.all([
+  const [subjects, sessions, flashcardsRaw] = await Promise.all([
     userSubjects(userId),
     userSessions(userId),
     db().flashcards.where("userId").equals(userId).toArray(),
   ]);
+  const flashcards = live(flashcardsRaw);
   return {
     name: user?.name ?? "Você",
     email: user?.email ?? "—",
@@ -494,13 +515,16 @@ export async function getDashboardData() {
   const heatmapStart = daysAgo(89).getTime();
   const now = Date.now();
 
-  const [subjects, allSessions, goals, reviews, flashcards] = await Promise.all([
+  const [subjects, allSessions, goalsRaw, reviewsRaw, flashcardsRaw] = await Promise.all([
     userSubjects(userId),
     userSessions(userId),
     db().goals.where("userId").equals(userId).toArray(),
     db().reviews.where("userId").equals(userId).toArray(),
     db().flashcards.where("userId").equals(userId).toArray(),
   ]);
+  const goals = live(goalsRaw);
+  const reviews = live(reviewsRaw);
+  const flashcards = live(flashcardsRaw);
 
   const activeSubjects = subjects.filter((s) => !s.archived);
   activeSubjects.sort((a, b) => b.updatedAt - a.updatedAt);
@@ -721,7 +745,7 @@ export async function getContentStatsForPeriod(periodDays: number) {
   const since = daysAgo(periodDays - 1).getTime();
   const subjects = await userSubjects(userId);
   const subjectIds = new Set(subjects.map((s) => s.id));
-  const allTopics = await db().topics.toArray();
+  const allTopics = live(await db().topics.toArray());
   const userTopics = allTopics.filter((t) => subjectIds.has(t.subjectId));
   const topicsTouched = userTopics.filter((t) => t.updatedAt >= since).length;
   const topicsWithContent = userTopics.filter((t) => hasTopicContent(t.content)).length;
@@ -759,12 +783,14 @@ export async function getCalendarMonth(year: number, month: number) {
   const monthStart = new Date(year, month, 1, 0, 0, 0, 0).getTime();
   const monthEnd = new Date(year, month + 1, 1, 0, 0, 0, 0).getTime();
 
-  const [allSessions, reviews, events, subjects] = await Promise.all([
+  const [allSessions, reviewsRaw, eventsRaw, subjects] = await Promise.all([
     userSessions(userId),
     db().reviews.where("userId").equals(userId).toArray(),
     db().events.where("userId").equals(userId).toArray(),
     userSubjects(userId),
   ]);
+  const reviews = live(reviewsRaw);
+  const events = live(eventsRaw);
   const subjMap = new Map(
     subjects.map((s) => [s.id, { id: s.id, name: s.name, color: s.color }])
   );
@@ -862,7 +888,7 @@ export type StudySessionView = StudySessionRow;
 
 export async function getMindMapsForUser() {
   const userId = getCurrentUserId();
-  const maps = await db().mindmaps.where("userId").equals(userId).toArray();
+  const maps = live(await db().mindmaps.where("userId").equals(userId).toArray());
   maps.sort((a, b) => b.updatedAt - a.updatedAt);
   return maps.map((m) => {
     const nodes = m.data?.nodes ?? [];
@@ -891,10 +917,11 @@ export async function getMindMap(id: string) {
 
 export async function getActivitiesForUser() {
   const userId = getCurrentUserId();
-  const [acts, subjects] = await Promise.all([
+  const [actsRaw, subjects] = await Promise.all([
     db().activities.where("userId").equals(userId).toArray(),
     userSubjects(userId),
   ]);
+  const acts = live(actsRaw);
   const subjMap = new Map(subjects.map((s) => [s.id, { name: s.name, color: s.color }]));
   return acts
     .sort((a, b) => a.order - b.order || b.updatedAt - a.updatedAt)
@@ -925,4 +952,89 @@ export async function getActivity(id: string) {
   const a = await db().activities.get(id);
   if (!a || a.userId !== userId) return null;
   return a;
+}
+
+// ─── Lixeira ──────────────────────────────────────────────────────────────
+
+export type TrashEntry = {
+  table: TrashTable;
+  id: string;
+  title: string;
+  typeLabel: string;
+};
+
+/**
+ * Grupo da Lixeira: itens excluídos numa mesma ação (mesmo `trashedAt` ms) —
+ * ex.: um tópico + descendentes, ou uma atividade + seu evento no calendário.
+ */
+export type TrashGroup = {
+  stamp: number;
+  trashedAt: Date;
+  expiresAt: Date;
+  title: string;
+  typeLabel: string;
+  count: number;
+  items: TrashEntry[];
+};
+
+function ref(name: TrashTable) {
+  return (
+    db() as unknown as Record<
+      string,
+      { where: (k: string) => { equals: (v: string) => { toArray: () => Promise<Record<string, unknown>[]> } } }
+    >
+  )[name];
+}
+
+/** Lista os itens na Lixeira do usuário, agrupados por ação (stamp). */
+export async function getTrashItems(): Promise<TrashGroup[]> {
+  const userId = getCurrentUserId();
+  const byStamp = new Map<number, TrashEntry[]>();
+
+  for (const table of TRASH_TABLES) {
+    const rows = await ref(table).where("userId").equals(userId).toArray();
+    const cfg = TRASH_LABELS[table];
+    for (const r of rows) {
+      const stamp = r.trashedAt as number | null | undefined;
+      if (stamp == null) continue;
+      const arr = byStamp.get(stamp) ?? [];
+      arr.push({
+        table,
+        id: String(r.id),
+        title: cfg.title(r),
+        typeLabel: cfg.label,
+      });
+      byStamp.set(stamp, arr);
+    }
+  }
+
+  const groups: TrashGroup[] = Array.from(byStamp.entries()).map(
+    ([stamp, items]) => {
+      // Item "principal" do grupo: o de maior peso (matéria/atividade antes de
+      // sessões/eventos-espelho); fallback = o primeiro.
+      const primary = items.find((i) => i.table !== "sessions" && i.table !== "events") ?? items[0];
+      return {
+        stamp,
+        trashedAt: new Date(stamp),
+        expiresAt: new Date(stamp + TRASH_RETENTION_MS),
+        title: primary.title,
+        typeLabel: primary.typeLabel,
+        count: items.length,
+        items,
+      };
+    }
+  );
+  groups.sort((a, b) => b.stamp - a.stamp);
+  return groups;
+}
+
+/** Quantidade de itens na Lixeira (pro badge da navegação). */
+export async function getTrashCount(): Promise<number> {
+  const userId = getCurrentUserId();
+  let count = 0;
+  for (const table of TRASH_TABLES) {
+    const rows = await ref(table).where("userId").equals(userId).toArray();
+    count += rows.filter((r) => r.trashedAt != null).length;
+  }
+  return count;
 }

@@ -18,6 +18,7 @@ import {
   Settings,
   Target,
   Timer,
+  Trash2,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -103,6 +104,18 @@ export function Sidebar() {
       </nav>
 
       <div className="space-y-1 border-t border-[var(--color-border)] p-2">
+        <Link
+          href="/trash"
+          className={cn(
+            "flex h-9 items-center gap-2.5 rounded-md px-2.5 text-sm transition-colors",
+            pathname.startsWith("/trash")
+              ? "bg-[var(--color-accent)] text-[var(--color-accent-foreground)]"
+              : "text-[var(--color-muted-foreground)] hover:bg-[var(--color-accent)] hover:text-[var(--color-foreground)]"
+          )}
+        >
+          <Trash2 className="size-4 shrink-0" />
+          {!collapsed && <span>Lixeira</span>}
+        </Link>
         <Link
           href="/settings"
           className={cn(

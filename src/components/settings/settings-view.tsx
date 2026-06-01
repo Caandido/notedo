@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Check, Loader2, Moon, Monitor, Sun, Timer } from "lucide-react";
+import { Bell, Check, Loader2, Moon, Monitor, Sun, Timer } from "lucide-react";
 import { useTheme } from "next-themes";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,6 +13,12 @@ import {
   saveSettings,
   type UserSettings,
 } from "@/lib/settings";
+import {
+  DEFAULT_NOTIFY,
+  loadNotifySettings,
+  saveNotifySettings,
+  type NotifySettings,
+} from "@/lib/notify/settings";
 
 interface SettingsViewProps {
   profile: {
@@ -34,6 +40,10 @@ export function SettingsView({ profile }: SettingsViewProps) {
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = React.useState(false);
   const [settings, setSettings] = React.useState<UserSettings>(DEFAULT_SETTINGS);
+  const [notify, setNotify] = React.useState<NotifySettings>(DEFAULT_NOTIFY);
+  const [permState, setPermState] = React.useState<
+    "unknown" | "granted" | "denied" | "asking"
+  >("unknown");
   const [saveState, setSaveState] = React.useState<"idle" | "saving" | "saved">(
     "idle"
   );
@@ -41,7 +51,26 @@ export function SettingsView({ profile }: SettingsViewProps) {
   React.useEffect(() => {
     setMounted(true);
     setSettings(loadSettings());
+    setNotify(loadNotifySettings());
   }, []);
+
+  function updateNotify(patch: Partial<NotifySettings>) {
+    setNotify((n) => {
+      const next = { ...n, ...patch };
+      saveNotifySettings(next);
+      return next;
+    });
+    // Reagenda com as novas preferências.
+    void import("@/lib/notify").then((m) => m.rescheduleAll());
+  }
+
+  async function askPermission() {
+    setPermState("asking");
+    const m = await import("@/lib/notify");
+    const ok = await m.ensurePermission();
+    setPermState(ok ? "granted" : "denied");
+    if (ok) void m.rescheduleAll();
+  }
 
   function updateTimer(patch: Partial<UserSettings["timer"]>) {
     setSettings((s) => {
@@ -173,10 +202,132 @@ export function SettingsView({ profile }: SettingsViewProps) {
         </CardContent>
       </Card>
 
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-sm">
+            <Bell className="size-4 text-[var(--color-muted-foreground)]" />
+            Notificações
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <ToggleRow
+            label="Ativar notificações"
+            desc="Lembretes de provas e atividades"
+            checked={notify.enabled}
+            onChange={(v) => updateNotify({ enabled: v })}
+          />
+
+          <div
+            className={cn(
+              "space-y-4 border-t border-[var(--color-border)] pt-4 transition-opacity",
+              !notify.enabled && "pointer-events-none opacity-40"
+            )}
+          >
+            <ToggleRow
+              label="1 dia antes"
+              desc="Lembrete na véspera do prazo"
+              checked={notify.dayBefore}
+              onChange={(v) => updateNotify({ dayBefore: v })}
+            />
+            <ToggleRow
+              label="No dia (de manhã)"
+              desc="Lembrete na manhã do prazo"
+              checked={notify.morningOf}
+              onChange={(v) => updateNotify({ morningOf: v })}
+            />
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium">Horário da manhã</p>
+                <p className="text-xs text-[var(--color-muted-foreground)]">
+                  Usado pelos lembretes “1 dia antes” e “no dia”
+                </p>
+              </div>
+              <input
+                type="time"
+                value={notify.morningTime}
+                onChange={(e) => updateNotify({ morningTime: e.target.value })}
+                className="h-8 rounded-md border border-[var(--color-border)] bg-[var(--color-card)] px-2 text-sm outline-none focus:border-[var(--color-ring)]"
+              />
+            </div>
+            <ToggleRow
+              label="1 hora antes"
+              desc="Lembrete 1h antes do horário marcado"
+              checked={notify.hourBefore}
+              onChange={(v) => updateNotify({ hourBefore: v })}
+            />
+            <ToggleRow
+              label="Atrasados"
+              desc="Avisar quando um prazo passou e está pendente"
+              checked={notify.overdue}
+              onChange={(v) => updateNotify({ overdue: v })}
+            />
+
+            <div className="flex items-center justify-between border-t border-[var(--color-border)] pt-4">
+              <p className="text-xs text-[var(--color-muted-foreground)]">
+                {permState === "granted"
+                  ? "Permissão concedida ✓"
+                  : permState === "denied"
+                    ? "Permissão negada — ative nas configurações do sistema"
+                    : "Permita as notificações para receber os lembretes"}
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={permState === "asking"}
+                onClick={() => void askPermission()}
+              >
+                {permState === "asking" && (
+                  <Loader2 className="size-3 animate-spin" />
+                )}
+                Permitir notificações
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       <p className="text-center text-xs text-[var(--color-muted-foreground)]">
-        Preferências do timer ficam no navegador (localStorage). Sincronização
-        entre dispositivos chega quando o auth real for ativado.
+        No Android os lembretes funcionam com o app fechado. No computador e na
+        web, eles disparam enquanto o app estiver aberto.
       </p>
+    </div>
+  );
+}
+
+interface ToggleRowProps {
+  label: string;
+  desc?: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}
+
+function ToggleRow({ label, desc, checked, onChange }: ToggleRowProps) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <div className="min-w-0">
+        <p className="text-sm font-medium">{label}</p>
+        {desc && (
+          <p className="text-xs text-[var(--color-muted-foreground)]">{desc}</p>
+        )}
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        aria-label={label}
+        onClick={() => onChange(!checked)}
+        className={cn(
+          "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors",
+          checked ? "bg-[var(--color-primary)]" : "bg-[var(--color-muted)]"
+        )}
+      >
+        <span
+          className={cn(
+            "inline-block size-4 transform rounded-full bg-white transition-transform",
+            checked ? "translate-x-4" : "translate-x-0.5"
+          )}
+        />
+      </button>
     </div>
   );
 }

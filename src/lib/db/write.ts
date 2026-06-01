@@ -52,30 +52,66 @@ export async function writeUpdate(
 }
 
 /**
- * Delete = hard-delete local + lápide dirty (propaga no push).
- * Reads nunca veem a linha (some na hora), sem risco de "fantasma".
+ * Carimbo de exclusão (ms). Uma ação de delete (que pode mexer em várias linhas
+ * em cascata) deve usar UM único stamp pra todas as linhas — assim a Lixeira
+ * agrupa o conjunto e o restore/purge operam no grupo inteiro.
+ */
+export function newTrashStamp(): number {
+  return Date.now();
+}
+
+/**
+ * "Excluir" agora = mandar pra Lixeira (soft-delete): carimba `trashedAt`.
+ * O item some das listagens (reads filtram `trashedAt`), mas continua
+ * restaurável por 12 dias. Sincroniza como uma atualização normal (_dirty=1);
+ * a exclusão real (hard-delete) só acontece na purga/`writePurge`.
  */
 export async function writeDelete(
   table: SyncTableName,
-  id: string
+  id: string,
+  stamp: number = Date.now()
 ): Promise<void> {
-  const now = Date.now();
-  const userId = getCurrentUserId();
-  await db().transaction("rw", ref(table), db()._tombstones, async () => {
-    await ref(table).delete(id);
-    await db()._tombstones.put({
-      key: `${table}:${id}`,
-      table,
-      rowId: id,
-      userId,
-      deletedAt: now,
-      _dirty: 1,
-    });
+  await ref(table).update(id, {
+    trashedAt: stamp,
+    updatedAt: stamp,
+    _dirty: 1,
   });
   scheduleSync();
 }
 
 export async function writeBulkDelete(
+  table: SyncTableName,
+  ids: string[],
+  stamp: number = Date.now()
+): Promise<void> {
+  if (ids.length === 0) return;
+  await ref(table)
+    .where("id")
+    .anyOf(ids)
+    .modify({ trashedAt: stamp, updatedAt: stamp, _dirty: 1 });
+  scheduleSync();
+}
+
+/** Tira da Lixeira (restaura): zera `trashedAt`. */
+export async function writeRestore(
+  table: SyncTableName,
+  ids: string[]
+): Promise<void> {
+  if (ids.length === 0) return;
+  const now = Date.now();
+  await ref(table)
+    .where("id")
+    .anyOf(ids)
+    .modify({ trashedAt: null, updatedAt: now, _dirty: 1 });
+  scheduleSync();
+}
+
+/**
+ * Exclusão DEFINITIVA = hard-delete local + lápide dirty (propaga no push).
+ * Usado pela purga automática (12 dias) e pelo "excluir definitivo" da Lixeira.
+ * (Era o comportamento antigo do writeDelete.)
+ */
+export async function writePurge(
   table: SyncTableName,
   ids: string[]
 ): Promise<void> {
