@@ -51,10 +51,17 @@ export function useRepoQuery<T>(
     error: null,
   });
 
+  // `fn` é recriada a cada render; guardamos a última numa ref pra os efeitos
+  // sempre chamarem a versão atual sem precisar entrar nas suas deps.
+  const fnRef = React.useRef(fn);
+  fnRef.current = fn;
+
+  // Carga inicial e troca de deps (ex.: outro tópico): aí SIM mostramos loading
+  // e limpamos os dados antigos — é uma navegação genuína pra outro recurso.
   React.useEffect(() => {
     let cancelled = false;
-    setState((s) => ({ ...s, loading: true, error: null }));
-    fn()
+    setState({ data: null, loading: true, error: null });
+    fnRef.current()
       .then((data) => {
         if (cancelled) return;
         setState({ data, loading: false, error: null });
@@ -67,7 +74,30 @@ export function useRepoQuery<T>(
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [version, ...deps]);
+  }, deps);
+
+  // Invalidação de fundo (toda mutação chama invalidateAll — inclusive o autosave
+  // do editor). Aqui fazemos um refetch SILENCIOSO: mantemos os dados atuais e NÃO
+  // ligamos `loading`, senão telas que fazem `if (loading) return <Loading/>`
+  // desmontariam o conteúdo a cada save — o editor piscava e perdia o foco.
+  const mountVersion = React.useRef(version);
+  React.useEffect(() => {
+    if (mountVersion.current === version) return; // ignora o disparo de montagem
+    let cancelled = false;
+    fnRef.current()
+      .then((data) => {
+        if (cancelled) return;
+        setState({ data, loading: false, error: null });
+      })
+      .catch((err: Error) => {
+        if (cancelled) return;
+        setState((s) => ({ ...s, error: err.message }));
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [version]);
 
   return state;
 }
