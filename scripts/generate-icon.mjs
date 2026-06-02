@@ -4,8 +4,10 @@
 //
 //   node scripts/generate-icon.mjs
 //
-// Design: clean/minimalista na paleta do app — squircle grafite neutro + um
-// brilho violeta sutil (cor-assinatura, hue ~286) atrás do monograma N branco.
+// Design: clean/minimalista na paleta do app — tile VIOLETA (cor-assinatura,
+// hue ~286) com o monograma N branco. O tile grafite anterior sumia na taskbar
+// escura do Windows (quase-preto sobre quase-preto); um tile violeta sólido fica
+// nítido em qualquer fundo (taskbar escura, desktop claro, launcher Android).
 // Os favicons web (src/app/icon.svg e apple-icon.svg) seguem o mesmo desenho.
 
 import { fileURLToPath } from "node:url";
@@ -15,20 +17,19 @@ import sharp from "sharp";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, "..");
 
-// Desenho mestre, 1024x1024. Grafite + glow violeta + N branco.
+// Desenho mestre, 1024x1024. Tile violeta (gradiente) + N branco.
 const svg = `<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <linearGradient id="bg" x1="512" y1="0" x2="512" y2="1024" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#1c1b22"/>
-      <stop offset="1" stop-color="#0d0d11"/>
+      <stop offset="0" stop-color="#8b81f7"/>
+      <stop offset="1" stop-color="#5a4fd6"/>
     </linearGradient>
-    <radialGradient id="glow" cx="512" cy="560" r="430" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#7c7cf0" stop-opacity="0.42"/>
-      <stop offset="0.6" stop-color="#7c7cf0" stop-opacity="0.12"/>
-      <stop offset="1" stop-color="#7c7cf0" stop-opacity="0"/>
+    <radialGradient id="glow" cx="360" cy="320" r="620" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
     </radialGradient>
     <linearGradient id="sheen" x1="512" y1="56" x2="512" y2="420" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#ffffff" stop-opacity="0.07"/>
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.12"/>
       <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
     </linearGradient>
   </defs>
@@ -43,7 +44,7 @@ const svg = `<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http
     stroke-linecap="round" stroke-linejoin="round"/>
 
   <!-- borda interna sutil pra dar bisel -->
-  <rect x="6" y="6" width="1012" height="1012" rx="226" fill="none" stroke="#ffffff" stroke-opacity="0.12" stroke-width="3"/>
+  <rect x="6" y="6" width="1012" height="1012" rx="226" fill="none" stroke="#ffffff" stroke-opacity="0.16" stroke-width="3"/>
 </svg>`;
 
 const targets = [

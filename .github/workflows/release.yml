@@ -104,7 +104,7 @@ jobs:
         run: node scripts/inject-android-widget.mjs
 
       - name: Generate Android icons
-        run: npx @capacitor/assets generate --android --iconBackgroundColor "#121116" --iconBackgroundColorDark "#0d0d11"
+        run: npx @capacitor/assets generate --android --iconBackgroundColor "#6c61e4" --iconBackgroundColorDark "#5a4fd6"
 
       - name: Sync web into Android
         run: npx cap sync android

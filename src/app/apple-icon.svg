@@ -1,13 +1,12 @@
 <svg width="180" height="180" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <linearGradient id="bg" x1="128" y1="0" x2="128" y2="256" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#1c1b22"/>
-      <stop offset="1" stop-color="#0d0d11"/>
+      <stop offset="0" stop-color="#8b81f7"/>
+      <stop offset="1" stop-color="#5a4fd6"/>
     </linearGradient>
-    <radialGradient id="glow" cx="128" cy="140" r="120" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#7c7cf0" stop-opacity="0.42"/>
-      <stop offset="0.6" stop-color="#7c7cf0" stop-opacity="0.12"/>
-      <stop offset="1" stop-color="#7c7cf0" stop-opacity="0"/>
+    <radialGradient id="glow" cx="90" cy="80" r="170" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
     </radialGradient>
   </defs>
   <rect width="256" height="256" fill="url(#bg)"/>
