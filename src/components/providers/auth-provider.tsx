@@ -89,9 +89,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [applySession]);
 
   const signOut = React.useCallback(async () => {
-    void import("@/lib/sync/engine")
-      .then((m) => m.stopSync())
-      .catch(() => {});
+    // Logout apaga o cache local (db().delete()) pra não vazar dados entre contas.
+    // Antes disso: tenta enviar o que está pendente; se ainda sobrar algo não
+    // sincronizado (offline/erro), AVISA — pra nunca apagar dados não salvos calado.
+    try {
+      const engine = await import("@/lib/sync/engine");
+      await engine.syncAll("signout").catch(() => {});
+      const pending = await engine.countUnsynced().catch(() => 0);
+      if (pending > 0) {
+        const ok = window.confirm(
+          `Você tem ${pending} alteração(ões) ainda NÃO sincronizada(s) com a nuvem.\n\n` +
+            `Sair deste aparelho vai APAGAR esses dados locais — e, como não foram ` +
+            `enviados, eles podem se perder.\n\nSair mesmo assim?`
+        );
+        if (!ok) return; // aborta o logout; continua logado e com os dados
+      }
+      engine.stopSync();
+    } catch {
+      const ok = window.confirm(
+        "Não foi possível confirmar a sincronização antes de sair. Sair pode " +
+          "apagar dados locais não enviados. Sair mesmo assim?"
+      );
+      if (!ok) return;
+    }
     await supabase().auth.signOut().catch(() => {});
     await wipeLocalData().catch(() => {});
     setSessionUserId(null);

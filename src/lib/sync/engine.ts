@@ -168,6 +168,21 @@ async function pullTable(desc: TableDesc): Promise<void> {
 
 // ─── Orquestração ──────────────────────────────────────────────────────────
 
+/**
+ * Conta quantas mudanças locais ainda NÃO foram enviadas ao servidor (linhas
+ * `_dirty`, tombstones e blobs pendentes). Usado no logout pra não apagar dados
+ * não sincronizados sem avisar. NÃO conta `users` (perfil não passa pelo motor).
+ */
+export async function countUnsynced(): Promise<number> {
+  let n = 0;
+  for (const d of TABLE_DESCRIPTORS) {
+    n += await ref(d.local).where("_dirty").equals(1).count();
+  }
+  n += await db()._tombstones.where("_dirty").equals(1).count();
+  n += await db()._blobs.where("_dirty").equals(1).count();
+  return n;
+}
+
 let syncing = false;
 let queued = false;
 
