@@ -152,6 +152,7 @@ export function NoteEditor({
           initialContent={content}
           onSave={saveContent}
           placeholder="Escreva sua nota…"
+          stickyTopClass="top-0"
         />
       </div>
     </div>

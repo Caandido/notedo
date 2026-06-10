@@ -42,12 +42,19 @@ interface RichEditorProps {
   initialContent: unknown;
   onSave: (content: unknown) => Promise<{ ok: boolean; error?: string }>;
   placeholder?: string;
+  /**
+   * Classe de offset da barra sticky. Padrão "top-14" (páginas com header fixo
+   * de 56px acima, ex.: matérias/atividades). Telas onde o editor rola num
+   * container próprio sem esse header (ex.: bloco de notas) passam "top-0".
+   */
+  stickyTopClass?: string;
 }
 
 export function RichEditor({
   initialContent,
   onSave,
   placeholder = "Comece a escrever...",
+  stickyTopClass = "top-14",
 }: RichEditorProps) {
   const [saveStatus, setSaveStatus] = React.useState<SaveStatus>("idle");
   const saveTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -149,7 +156,7 @@ export function RichEditor({
 
   if (!editor) return null;
 
-  return <RichEditorInner editor={editor} saveStatus={saveStatus} addLink={addLink} addImage={addImage} addTable={addTable} addMath={addMath} />;
+  return <RichEditorInner editor={editor} saveStatus={saveStatus} addLink={addLink} addImage={addImage} addTable={addTable} addMath={addMath} stickyTopClass={stickyTopClass} />;
 }
 
 /**
@@ -165,6 +172,7 @@ function RichEditorInner({
   addImage,
   addTable,
   addMath,
+  stickyTopClass,
 }: {
   editor: NonNullable<ReturnType<typeof useEditor>>;
   saveStatus: SaveStatus;
@@ -172,6 +180,7 @@ function RichEditorInner({
   addImage: () => void;
   addTable: () => void;
   addMath: (block: boolean) => void;
+  stickyTopClass: string;
 }) {
   const state = useEditorState({
     editor,
@@ -194,7 +203,7 @@ function RichEditorInner({
 
   return (
     <div className="space-y-3">
-      <div className="sticky top-14 z-10 -mx-1 flex flex-wrap items-center gap-0.5 rounded-md border border-[var(--color-border)] bg-[var(--color-card)]/95 p-1 backdrop-blur-md">
+      <div className={cn("sticky z-10 -mx-1 flex flex-wrap items-center gap-0.5 rounded-md border border-[var(--color-border)] bg-[var(--color-card)]/95 p-1 backdrop-blur-md", stickyTopClass)}>
         <ToolbarButton
           icon={Heading1}
           active={state.h1}
