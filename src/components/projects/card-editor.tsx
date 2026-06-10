@@ -4,16 +4,18 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Loader2, Trash2, X } from "lucide-react";
 
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { RichEditor } from "@/components/editor/rich-editor";
 import { getCard } from "@/lib/queries";
 import {
   deleteCard,
   saveCardContent,
+  setCardColor,
   updateCard,
 } from "@/features/boards/actions";
 import type { CardPriority } from "@/lib/db/schema";
-import { PRIORITIES, PRIORITY_LABELS } from "./board-styles";
+import { CARD_COLORS, PRIORITIES, PRIORITY_LABELS } from "./board-styles";
 
 const inputCls =
   "h-8 rounded-md border border-[var(--color-border)] bg-[var(--color-background)] px-2 text-sm outline-none focus:border-[var(--color-ring)]";
@@ -39,6 +41,7 @@ export function CardEditor({ id, boardId }: { id: string; boardId?: string }) {
   const [missing, setMissing] = React.useState(false);
   const [content, setContent] = React.useState<unknown>(null);
   const [resolvedBoard, setResolvedBoard] = React.useState<string | undefined>(boardId);
+  const [color, setColor] = React.useState<string | null>(null);
   const [labelInput, setLabelInput] = React.useState("");
   const [meta, setMeta] = React.useState<Meta>({
     title: "",
@@ -58,6 +61,7 @@ export function CardEditor({ id, boardId }: { id: string; boardId?: string }) {
       }
       setResolvedBoard((b) => b ?? c.boardId);
       setContent(c.content ?? null);
+      setColor(c.color ?? null);
       setMeta({
         title: c.title,
         priority: c.priority,
@@ -100,6 +104,11 @@ export function CardEditor({ id, boardId }: { id: string; boardId?: string }) {
     }
     persist({ ...meta, labels: [...meta.labels, l].slice(0, 12) });
     setLabelInput("");
+  }
+
+  function pickColor(c: string | null) {
+    setColor(c);
+    void setCardColor(id, c);
   }
 
   if (!loaded)
@@ -160,6 +169,25 @@ export function CardEditor({ id, boardId }: { id: string; boardId?: string }) {
                 </option>
               ))}
             </select>
+          </Field>
+          <Field label="Cor">
+            <div className="flex h-8 items-center gap-1.5">
+              {CARD_COLORS.map((c) => (
+                <button
+                  key={c ?? "none"}
+                  type="button"
+                  aria-label={c ? `Cor ${c}` : "Sem cor (usa a do quadro)"}
+                  onClick={() => pickColor(c)}
+                  className={cn(
+                    "flex size-5 items-center justify-center rounded-full ring-1 ring-[var(--color-border)]",
+                    color === c && "ring-2 ring-[var(--color-foreground)]"
+                  )}
+                  style={c ? { background: c } : undefined}
+                >
+                  {c === null && <X className="size-3 text-[var(--color-muted-foreground)]" />}
+                </button>
+              ))}
+            </div>
           </Field>
           <Field label="Prazo">
             <input

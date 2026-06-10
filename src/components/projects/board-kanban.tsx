@@ -7,6 +7,7 @@ import {
   Check,
   GripVertical,
   MoreHorizontal,
+  Palette,
   Plus,
   Trash2,
   X,
@@ -27,8 +28,9 @@ import {
   renameColumn,
   reorderColumns,
   setBoardColor,
+  setCardColor,
 } from "@/features/boards/actions";
-import { BOARD_COLORS, PRIORITY_DOT } from "./board-styles";
+import { BOARD_COLORS, CARD_COLORS, PRIORITY_DOT } from "./board-styles";
 
 type Drag = { kind: "card" | "column"; id: string } | null;
 
@@ -374,10 +376,13 @@ function Column({
               }
             }}
             onClick={() => onOpenCard(c.id)}
-            className="cursor-pointer rounded-md border border-[var(--color-border)] bg-[var(--color-card)] p-2.5 shadow-sm transition-colors hover:border-[var(--color-ring)]"
-            style={{ borderLeft: `3px solid ${color}` }}
+            className="group/card cursor-pointer rounded-md border border-[var(--color-border)] bg-[var(--color-card)] p-2.5 shadow-sm transition-colors hover:border-[var(--color-ring)]"
+            style={{ borderLeft: `3px solid ${c.color ?? color}` }}
           >
-            <p className="text-sm font-medium leading-snug">{c.title}</p>
+            <div className="flex items-start gap-2">
+              <p className="min-w-0 flex-1 text-sm font-medium leading-snug">{c.title}</p>
+              <CardColorMenu cardId={c.id} current={c.color} />
+            </div>
             {(c.labels.length > 0 || c.priority !== "NONE" || c.dueDate != null) && (
               <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] text-[var(--color-muted-foreground)]">
                 {c.priority !== "NONE" && (
@@ -425,6 +430,65 @@ function Column({
           </button>
         )}
       </div>
+    </div>
+  );
+}
+
+// Swatch rápido pra trocar a cor do card direto no quadro.
+function CardColorMenu({ cardId, current }: { cardId: string; current: string | null }) {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <div className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
+      <button
+        type="button"
+        aria-label="Trocar a cor do card"
+        title="Trocar a cor do card"
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((o) => !o);
+        }}
+        className={cn(
+          "mt-0.5 flex size-4 items-center justify-center rounded-full ring-1 ring-[var(--color-border)] transition-opacity",
+          current ? "opacity-100" : "opacity-0 group-hover/card:opacity-100"
+        )}
+        style={current ? { background: current } : undefined}
+      >
+        {!current && <Palette className="size-3 text-[var(--color-muted-foreground)]" />}
+      </button>
+      {open && (
+        <>
+          <div
+            className="fixed inset-0 z-10"
+            onClick={(e) => {
+              e.stopPropagation();
+              setOpen(false);
+            }}
+          />
+          <div className="absolute right-0 top-6 z-20 flex gap-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-card)] p-2 shadow-lg">
+            {CARD_COLORS.map((col) => (
+              <button
+                key={col ?? "none"}
+                type="button"
+                aria-label={col ? `Cor ${col}` : "Sem cor (usa a do quadro)"}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void setCardColor(cardId, col);
+                  setOpen(false);
+                }}
+                className={cn(
+                  "flex size-5 items-center justify-center rounded-full ring-1 ring-[var(--color-border)]",
+                  current === col && "ring-2 ring-[var(--color-foreground)]"
+                )}
+                style={col ? { background: col } : undefined}
+              >
+                {col === null && (
+                  <X className="size-3 text-[var(--color-muted-foreground)]" />
+                )}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }

@@ -223,6 +223,7 @@ export const TABLE_DESCRIPTORS: TableDesc[] = [
       content: { col: "content", json: true },
       labels: { col: "labels", json: true },
       priority: { col: "priority" },
+      color: { col: "color" },
       dueDate: { col: "due_date", ts: true },
       order: { col: "order" },
       createdAt: CREATED,
@@ -260,6 +261,17 @@ export function setTrashedAtSupported(v: boolean): void {
   trashedAtSupported = v;
 }
 
+/**
+ * Colunas remotas que o servidor ainda não tem (ex.: `color` em cards antes do
+ * usuário rodar o SQL novo). O motor detecta o erro PGRST204/42703, marca aqui,
+ * e o toRemote para de enviar a coluna — o resto do sync segue normal. Genérico
+ * (qualquer coluna nova), mesmo espírito do gate de trashed_at.
+ */
+const unsupportedColumns = new Set<string>();
+export function markColumnUnsupported(col: string): void {
+  unsupportedColumns.add(col);
+}
+
 /** Linha local -> payload remoto (snake_case, ISO). Marca deleted_at=null (live). */
 export function toRemote(
   desc: TableDesc,
@@ -268,6 +280,7 @@ export function toRemote(
   const out: Record<string, unknown> = { deleted_at: null };
   for (const [localKey, f] of Object.entries(desc.fields)) {
     if (localKey === "trashedAt" && !trashedAtSupported) continue;
+    if (unsupportedColumns.has(f.col)) continue;
     const v = row[localKey];
     out[f.col] = f.ts && typeof v === "number" ? new Date(v).toISOString() : v ?? null;
   }

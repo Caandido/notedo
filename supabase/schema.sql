@@ -174,6 +174,7 @@ create table if not exists public.cards (
   content     jsonb,
   labels      jsonb not null default '[]'::jsonb,
   priority    text not null default 'NONE',
+  color       text,
   due_date    timestamptz,
   "order"     integer not null default 0,
   created_at  timestamptz not null default now(),
@@ -225,6 +226,8 @@ alter table public.activities add column if not exists trashed_at timestamptz;
 alter table public.boards     add column if not exists trashed_at timestamptz;
 alter table public.cards      add column if not exists trashed_at timestamptz;
 alter table public.notes      add column if not exists trashed_at timestamptz;
+-- Cor própria por card (acento). Idempotente.
+alter table public.cards      add column if not exists color text;
 
 create index if not exists subjects_user_updated   on public.subjects   (user_id, updated_at);
 create index if not exists topics_user_updated      on public.topics     (user_id, updated_at);

@@ -10,6 +10,7 @@ import { getWatermark, setWatermark } from "./watermark";
 import {
   TABLE_DESCRIPTORS,
   fromRemote,
+  markColumnUnsupported,
   setTrashedAtSupported,
   toRemote,
   type TableDesc,
@@ -33,15 +34,17 @@ const byLocal = new Map(TABLE_DESCRIPTORS.map((d) => [d.local, d]));
 
 // ─── Push ────────────────────────────────────────────────────────────────
 
-/** Erro do PostgREST quando a coluna `trashed_at` ainda não existe no servidor. */
-function isMissingTrashedAt(error: unknown): boolean {
-  const e = error as { code?: string; message?: string } | null;
-  const msg = (e?.message ?? "").toLowerCase();
-  return (
-    e?.code === "PGRST204" ||
-    e?.code === "42703" ||
-    (msg.includes("trashed_at") && msg.includes("column"))
-  );
+/** Erro de COLUNA inexistente no servidor (PostgREST PGRST204 / Postgres 42703). */
+function isMissingColumn(error: unknown): boolean {
+  const e = error as { code?: string } | null;
+  return e?.code === "PGRST204" || e?.code === "42703";
+}
+
+/** Extrai o nome da coluna ausente da mensagem de erro (pra parar de enviá-la). */
+function parseMissingColumn(error: unknown): string | null {
+  const msg = (error as { message?: string } | null)?.message ?? "";
+  const m = msg.match(/'([^']+)' column/) || msg.match(/column "([^"]+)"/);
+  return m ? m[1] : null;
 }
 
 /**
@@ -75,10 +78,14 @@ async function pushTable(desc: TableDesc): Promise<void> {
     let { error } = await supabase()
       .from(desc.remote)
       .upsert(part.map((r) => toRemote(desc, r)), { onConflict: "id" });
-    // Servidor sem a coluna trashed_at (SQL novo não rodado): desliga o campo e
-    // tenta de novo sem ele. O resto do sync continua normal.
-    if (error && isMissingTrashedAt(error)) {
-      setTrashedAtSupported(false);
+    // Servidor sem alguma coluna nova (ex.: trashed_at, color — SQL não rodado):
+    // marca a coluna, para de enviá-la e re-tenta. O resto do sync segue normal.
+    let guard = 0;
+    while (error && isMissingColumn(error) && guard++ < 6) {
+      const col = parseMissingColumn(error);
+      if (!col) break;
+      markColumnUnsupported(col);
+      if (col === "trashed_at") setTrashedAtSupported(false);
       ({ error } = await supabase()
         .from(desc.remote)
         .upsert(part.map((r) => toRemote(desc, r)), { onConflict: "id" }));

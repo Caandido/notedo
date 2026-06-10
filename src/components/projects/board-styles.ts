@@ -28,3 +28,15 @@ export const BOARD_COLORS = [
   "#a78bfa",
   "#22d3ee",
 ];
+
+/** Paleta de cores por card. `null` = herda a cor do quadro (padrão). */
+export const CARD_COLORS: (string | null)[] = [
+  null,
+  "#7c7cf0",
+  "#60a5fa",
+  "#34d399",
+  "#fbbf24",
+  "#fb7185",
+  "#f472b6",
+  "#22d3ee",
+];

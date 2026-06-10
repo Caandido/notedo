@@ -1000,6 +1000,7 @@ export async function getBoardDetail(boardId: string) {
       title: c.title,
       labels: c.labels ?? [],
       priority: c.priority,
+      color: c.color ?? null,
       dueDate: c.dueDate,
       order: c.order,
       hasContent: hasTopicContent(c.content),

@@ -255,6 +255,8 @@ export type CardRow = SyncMeta & {
   content: unknown;
   labels: string[];
   priority: CardPriority;
+  /** Cor própria do card (acento). null = herda a cor do quadro. */
+  color: string | null;
   dueDate: number | null;
   order: number;
   createdAt: number;

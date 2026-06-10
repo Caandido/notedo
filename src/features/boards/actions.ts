@@ -201,6 +201,7 @@ export async function createCard(boardId: string, columnId: string, title: strin
     content: null,
     labels: [],
     priority: "NONE",
+    color: null,
     dueDate: null,
     order: await nextCardOrder(boardId, columnId),
     createdAt: now,
@@ -236,6 +237,15 @@ export async function updateCard(input: UpdateCardInput) {
     .slice(0, 12);
 
   await writeUpdate("cards", input.id, { title, labels, priority, dueDate });
+  invalidateAll();
+  return { ok: true as const };
+}
+
+/** Define (ou limpa, com null) a cor própria do card. */
+export async function setCardColor(id: string, color: string | null) {
+  if (!(await ownedCard(id)))
+    return { ok: false as const, error: "Card não encontrado." };
+  await writeUpdate("cards", id, { color });
   invalidateAll();
   return { ok: true as const };
 }
