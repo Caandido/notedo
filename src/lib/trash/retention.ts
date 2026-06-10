@@ -14,6 +14,9 @@ export const TRASH_TABLES = [
   "grades",
   "mindmaps",
   "activities",
+  "boards",
+  "cards",
+  "notes",
 ] as const;
 
 export type TrashTable = (typeof TRASH_TABLES)[number];
@@ -33,4 +36,7 @@ export const TRASH_LABELS: Record<
   grades: { label: "Nota", title: (r) => String(r.title ?? "Nota") },
   mindmaps: { label: "Mapa mental", title: (r) => String(r.title ?? "Mapa") },
   activities: { label: "Atividade", title: (r) => String(r.title ?? "Atividade") },
+  boards: { label: "Projeto", title: (r) => String(r.name ?? "Projeto") },
+  cards: { label: "Card", title: (r) => String(r.title ?? "Card") },
+  notes: { label: "Anotação", title: (r) => String(r.title || "Sem título") },
 };

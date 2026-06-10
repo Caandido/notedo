@@ -6,12 +6,15 @@ import {
   SYNC_TABLES,
   type ActivityRow,
   type BlobRow,
+  type BoardRow,
   type CalendarEventRow,
+  type CardRow,
   type FlashcardRow,
   type GoalRow,
   type GradeRow,
   type LocalUser,
   type MindMapRow,
+  type NoteRow,
   type ReviewRow,
   type StudySessionRow,
   type SubjectRow,
@@ -32,6 +35,9 @@ class NotedoDB extends Dexie {
   grades!: Table<GradeRow, string>;
   mindmaps!: Table<MindMapRow, string>;
   activities!: Table<ActivityRow, string>;
+  boards!: Table<BoardRow, string>;
+  cards!: Table<CardRow, string>;
+  notes!: Table<NoteRow, string>;
   _sync_state!: Table<SyncStateRow, string>;
   _tombstones!: Table<TombstoneRow, string>;
   _blobs!: Table<BlobRow, string>;
@@ -97,6 +103,18 @@ class NotedoDB extends Dexie {
     this.version(4).stores({
       activities:
         "id, userId, subjectId, status, dueDate, [userId+status], [userId+updatedAt], updatedAt, _dirty",
+    });
+
+    // v5: Kanban de projetos (boards + cards, sincronizáveis).
+    this.version(5).stores({
+      boards: "id, userId, [userId+order], updatedAt, _dirty",
+      cards:
+        "id, userId, boardId, columnId, [boardId+columnId], [userId+updatedAt], updatedAt, _dirty",
+    });
+
+    // v6: bloco de notas (sincronizável).
+    this.version(6).stores({
+      notes: "id, userId, pinned, [userId+updatedAt], updatedAt, _dirty",
     });
   }
 }

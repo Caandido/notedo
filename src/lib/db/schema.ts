@@ -219,6 +219,63 @@ export type ActivityRow = SyncMeta & {
 };
 
 /**
+ * Quadro Kanban de projetos (uso "trabalho/dev", separado das matérias).
+ * As colunas vivem em `columns` (JSON sincronizado) pra serem editáveis por
+ * quadro (criar/renomear/reordenar). Cada card referencia uma `columnId`.
+ */
+export type BoardColumn = {
+  id: string;
+  name: string;
+};
+
+export type BoardRow = SyncMeta & {
+  id: string;
+  userId: string;
+  name: string;
+  color: string;
+  columns: BoardColumn[];
+  /** ordem do projeto na lista lateral. */
+  order: number;
+  createdAt: number;
+};
+
+export type CardPriority = "NONE" | "LOW" | "MEDIUM" | "HIGH";
+
+/**
+ * Card de um quadro. Corpo em texto rico (`content`, TipTap JSON) — mesmo editor
+ * das matérias. `columnId` aponta pra uma coluna do board; `order` é a posição
+ * dentro da coluna (renumerada sequencialmente a cada move).
+ */
+export type CardRow = SyncMeta & {
+  id: string;
+  userId: string;
+  boardId: string;
+  columnId: string;
+  title: string;
+  content: unknown;
+  labels: string[];
+  priority: CardPriority;
+  dueDate: number | null;
+  order: number;
+  createdAt: number;
+};
+
+/**
+ * Bloco de notas: anotações rápidas/soltas, independentes de matérias e projetos.
+ * Corpo em texto rico (`content`, TipTap JSON). `pinned` fixa no topo; `color`
+ * é um acento opcional do card.
+ */
+export type NoteRow = SyncMeta & {
+  id: string;
+  userId: string;
+  title: string;
+  content: unknown;
+  pinned: boolean;
+  color: string | null;
+  createdAt: number;
+};
+
+/**
  * Cache local de binários (slides). NÃO sincroniza pelo motor de tabelas —
  * o transporte é o Supabase Storage (ver lib/sync/storage.ts). key = path.
  */
@@ -262,6 +319,9 @@ export const SYNC_TABLES = [
   "grades",
   "mindmaps",
   "activities",
+  "boards",
+  "cards",
+  "notes",
 ] as const;
 
 export type SyncTableName = (typeof SYNC_TABLES)[number];

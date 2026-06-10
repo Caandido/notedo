@@ -7,7 +7,7 @@
 type Field = { col: string; ts?: boolean; json?: boolean };
 
 export type TableDesc = {
-  local: "subjects" | "topics" | "sessions" | "goals" | "reviews" | "flashcards" | "events" | "grades" | "mindmaps" | "activities";
+  local: "subjects" | "topics" | "sessions" | "goals" | "reviews" | "flashcards" | "events" | "grades" | "mindmaps" | "activities" | "boards" | "cards" | "notes";
   remote: string;
   chunk: number;
   fields: Record<string, Field>;
@@ -191,6 +191,55 @@ export const TABLE_DESCRIPTORS: TableDesc[] = [
       grade: { col: "grade" },
       maxGrade: { col: "max_grade" },
       order: { col: "order" },
+      createdAt: CREATED,
+      updatedAt: UPDATED,
+    },
+  },
+  {
+    local: "boards",
+    remote: "boards",
+    chunk: 200,
+    fields: {
+      id: ID,
+      userId: UID,
+      name: { col: "name" },
+      color: { col: "color" },
+      columns: { col: "columns", json: true },
+      order: { col: "order" },
+      createdAt: CREATED,
+      updatedAt: UPDATED,
+    },
+  },
+  {
+    local: "cards",
+    remote: "cards",
+    chunk: 100,
+    fields: {
+      id: ID,
+      userId: UID,
+      boardId: { col: "board_id" },
+      columnId: { col: "column_id" },
+      title: { col: "title" },
+      content: { col: "content", json: true },
+      labels: { col: "labels", json: true },
+      priority: { col: "priority" },
+      dueDate: { col: "due_date", ts: true },
+      order: { col: "order" },
+      createdAt: CREATED,
+      updatedAt: UPDATED,
+    },
+  },
+  {
+    local: "notes",
+    remote: "notes",
+    chunk: 100,
+    fields: {
+      id: ID,
+      userId: UID,
+      title: { col: "title" },
+      content: { col: "content", json: true },
+      pinned: { col: "pinned" },
+      color: { col: "color" },
       createdAt: CREATED,
       updatedAt: UPDATED,
     },

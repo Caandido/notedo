@@ -44,7 +44,31 @@ function isMissingTrashedAt(error: unknown): boolean {
   );
 }
 
+/**
+ * Erro de TABELA inexistente no servidor (SQL novo de boards/cards ainda não
+ * rodado). PostgREST: PGRST205 ("Could not find the table ... in the schema
+ * cache"); Postgres: 42P01 (undefined_table).
+ */
+function isMissingTable(error: unknown): boolean {
+  const e = error as { code?: string; message?: string } | null;
+  const msg = (e?.message ?? "").toLowerCase();
+  return (
+    e?.code === "PGRST205" ||
+    e?.code === "42P01" ||
+    msg.includes("could not find the table") ||
+    (msg.includes("relation") && msg.includes("does not exist"))
+  );
+}
+
+/**
+ * Tabelas que o servidor ainda não tem (gate por sessão). Mantém a feature 100%
+ * local até o usuário rodar o SQL — sem deixar o push lançar e abortar o pull
+ * das demais tabelas. Some sozinho quando as tabelas existirem (novo load).
+ */
+const unsupportedTables = new Set<string>();
+
 async function pushTable(desc: TableDesc): Promise<void> {
+  if (unsupportedTables.has(desc.local)) return;
   const dirty = await ref(desc.local).where("_dirty").equals(1).toArray();
   if (!dirty.length) return;
   for (const part of chunk(dirty, desc.chunk)) {
@@ -58,6 +82,12 @@ async function pushTable(desc: TableDesc): Promise<void> {
       ({ error } = await supabase()
         .from(desc.remote)
         .upsert(part.map((r) => toRemote(desc, r)), { onConflict: "id" }));
+    }
+    // Tabela ainda não existe no servidor: marca como não-suportada e segue —
+    // o resto do sync (e a feature local) não é afetado.
+    if (error && isMissingTable(error)) {
+      unsupportedTables.add(desc.local);
+      return;
     }
     if (error) throw error;
     const ids = part.map((r) => r.id as string);
@@ -74,11 +104,16 @@ async function pushTombstones(): Promise<void> {
       await db()._tombstones.delete(s.key);
       continue;
     }
+    if (unsupportedTables.has(desc.local)) continue; // tabela ainda não existe
     const iso = new Date(s.deletedAt).toISOString();
     const { error } = await supabase()
       .from(desc.remote)
       .update({ deleted_at: iso, updated_at: iso })
       .eq("id", s.rowId);
+    if (error && isMissingTable(error)) {
+      unsupportedTables.add(desc.local);
+      continue;
+    }
     if (error) throw error;
     await db()._tombstones.delete(s.key);
   }
@@ -87,6 +122,7 @@ async function pushTombstones(): Promise<void> {
 // ─── Pull ────────────────────────────────────────────────────────────────
 
 async function pullTable(desc: TableDesc): Promise<void> {
+  if (unsupportedTables.has(desc.local)) return;
   let cursor = await getWatermark(desc.local);
   for (;;) {
     const { data, error } = await supabase()
@@ -95,6 +131,10 @@ async function pullTable(desc: TableDesc): Promise<void> {
       .gt("updated_at", new Date(cursor).toISOString())
       .order("updated_at", { ascending: true })
       .limit(PAGE);
+    if (error && isMissingTable(error)) {
+      unsupportedTables.add(desc.local);
+      return;
+    }
     if (error) throw error;
     if (!data || data.length === 0) break;
 

@@ -23,6 +23,12 @@ export const metadata: Metadata = {
   },
   description:
     "Aplicativo de estudos focado em produtividade, foco e métricas de aprendizado.",
+  // Faz o iOS abrir em tela cheia (standalone) ao "Adicionar à Tela de Início".
+  appleWebApp: {
+    capable: true,
+    title: "Notedo",
+    statusBarStyle: "black-translucent",
+  },
 };
 
 export const viewport: Viewport = {

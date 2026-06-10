@@ -956,6 +956,108 @@ export async function getActivity(id: string) {
   return a;
 }
 
+// ─── Projetos (Kanban) ───────────────────────────────────────────────────────
+
+export async function getBoardsForUser() {
+  const userId = getCurrentUserId();
+  const [boardsRaw, cardsRaw] = await Promise.all([
+    db().boards.where("userId").equals(userId).toArray(),
+    db().cards.where("userId").equals(userId).toArray(),
+  ]);
+  const boards = live(boardsRaw);
+  const cards = live(cardsRaw);
+  boards.sort((a, b) => a.order - b.order || a.createdAt - b.createdAt);
+  return boards.map((b) => ({
+    id: b.id,
+    name: b.name,
+    color: b.color,
+    columns: b.columns,
+    order: b.order,
+    cardCount: cards.filter((c) => c.boardId === b.id).length,
+  }));
+}
+export type BoardListItem = Awaited<ReturnType<typeof getBoardsForUser>>[number];
+
+export async function getBoardDetail(boardId: string) {
+  const userId = getCurrentUserId();
+  const board = await db().boards.get(boardId);
+  if (!board || board.userId !== userId || board.trashedAt != null) return null;
+  const cards = live(
+    await db().cards.where("boardId").equals(boardId).toArray()
+  );
+  cards.sort((a, b) => a.order - b.order || a.createdAt - b.createdAt);
+  return {
+    board: {
+      id: board.id,
+      name: board.name,
+      color: board.color,
+      columns: board.columns,
+    },
+    cards: cards.map((c) => ({
+      id: c.id,
+      boardId: c.boardId,
+      columnId: c.columnId,
+      title: c.title,
+      labels: c.labels ?? [],
+      priority: c.priority,
+      dueDate: c.dueDate,
+      order: c.order,
+      hasContent: hasTopicContent(c.content),
+    })),
+  };
+}
+export type BoardDetail = NonNullable<Awaited<ReturnType<typeof getBoardDetail>>>;
+export type CardListItem = BoardDetail["cards"][number];
+
+export async function getCard(id: string) {
+  const userId = getCurrentUserId();
+  const c = await db().cards.get(id);
+  if (!c || c.userId !== userId) return null;
+  return c;
+}
+
+// ─── Bloco de notas ──────────────────────────────────────────────────────────
+
+/** Extrai um trecho de texto puro do JSON do TipTap (pra prévia do card). */
+function extractPlainText(content: unknown, limit = 140): string {
+  if (!content || typeof content !== "object") return "";
+  const parts: string[] = [];
+  const walk = (node: unknown) => {
+    if (parts.join(" ").length > limit) return;
+    if (!node || typeof node !== "object") return;
+    const n = node as { type?: string; text?: string; content?: unknown[] };
+    if (n.type === "text" && typeof n.text === "string") parts.push(n.text);
+    if (Array.isArray(n.content)) n.content.forEach(walk);
+  };
+  walk(content);
+  return parts.join(" ").replace(/\s+/g, " ").trim().slice(0, limit);
+}
+
+export async function getNotesForUser() {
+  const userId = getCurrentUserId();
+  const notes = live(await db().notes.where("userId").equals(userId).toArray());
+  notes.sort(
+    (a, b) =>
+      Number(b.pinned) - Number(a.pinned) || b.updatedAt - a.updatedAt
+  );
+  return notes.map((n) => ({
+    id: n.id,
+    title: n.title,
+    preview: extractPlainText(n.content),
+    pinned: n.pinned,
+    color: n.color,
+    updatedAt: n.updatedAt,
+  }));
+}
+export type NoteListItem = Awaited<ReturnType<typeof getNotesForUser>>[number];
+
+export async function getNote(id: string) {
+  const userId = getCurrentUserId();
+  const n = await db().notes.get(id);
+  if (!n || n.userId !== userId) return null;
+  return n;
+}
+
 // ─── Lixeira ──────────────────────────────────────────────────────────────
 
 export type TrashEntry = {
