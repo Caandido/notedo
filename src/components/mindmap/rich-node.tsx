@@ -78,8 +78,8 @@ export function RichNode({ id, data, selected }: NodeProps) {
   }
   function addMath() {
     if (!editor) return;
-    const latex = prompt("LaTeX (equação):", "");
-    if (latex) editor.chain().focus().insertContent({ type: "blockMath", attrs: { latex } }).run();
+    // Nó de equação vazio que abre em edição (sem prompt — quebra no EXE).
+    editor.chain().focus().insertContent({ type: "blockMath", attrs: { latex: "" } }).run();
   }
 
   return (

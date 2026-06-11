@@ -145,13 +145,13 @@ export function RichEditor({
 
   function addMath(block: boolean) {
     if (!editor) return;
-    const latex = prompt(block ? "LaTeX (equação)" : "LaTeX (inline)", "");
-    if (latex === null) return;
-    if (block) {
-      editor.chain().focus().insertContent({ type: "blockMath", attrs: { latex } }).run();
-    } else {
-      editor.chain().focus().insertContent({ type: "inlineMath", attrs: { latex } }).run();
-    }
+    // Insere um nó de equação VAZIO que já abre em edição (input com preview ao
+    // vivo). Sem prompt() — que não funciona no webview do EXE (Tauri/WebView2).
+    editor
+      .chain()
+      .focus()
+      .insertContent({ type: block ? "blockMath" : "inlineMath", attrs: { latex: "" } })
+      .run();
   }
 
   if (!editor) return null;

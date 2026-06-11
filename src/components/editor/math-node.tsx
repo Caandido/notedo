@@ -6,6 +6,18 @@ import type { NodeViewProps } from "@tiptap/react";
 import katex from "katex";
 import * as React from "react";
 
+/** Renderiza LaTeX em HTML via KaTeX, tolerante a erro. */
+function renderKatex(latex: string, display: boolean): string {
+  try {
+    return katex.renderToString(latex || (display ? "" : "?"), {
+      throwOnError: false,
+      displayMode: display,
+    });
+  } catch {
+    return `<span class="text-rose-400">LaTeX inválido</span>`;
+  }
+}
+
 export const InlineMath = Node.create({
   name: "inlineMath",
   group: "inline",
@@ -67,29 +79,29 @@ export const BlockMath = Node.create({
   },
 });
 
-function InlineMathView({ node, updateAttributes, selected }: NodeViewProps) {
-  const [editing, setEditing] = React.useState(false);
+function InlineMathView({ node, updateAttributes, deleteNode, selected }: NodeViewProps) {
+  // Nó recém-inserido (latex vazio) já abre em edição — sem depender de prompt().
+  const [editing, setEditing] = React.useState(!node.attrs.latex);
   const [draft, setDraft] = React.useState(node.attrs.latex as string);
 
-  const rendered = React.useMemo(() => {
-    try {
-      return katex.renderToString(node.attrs.latex || "?", {
-        throwOnError: false,
-        displayMode: false,
-      });
-    } catch {
-      return `<span class="text-rose-400">LaTeX inválido</span>`;
-    }
-  }, [node.attrs.latex]);
+  const rendered = React.useMemo(
+    () => renderKatex(node.attrs.latex as string, false),
+    [node.attrs.latex]
+  );
 
   function save() {
-    updateAttributes({ latex: draft });
+    const v = draft.trim();
+    if (!v) {
+      deleteNode(); // equação abandonada vazia: remove em vez de deixar "?"
+      return;
+    }
+    updateAttributes({ latex: v });
     setEditing(false);
   }
 
   if (editing) {
     return (
-      <NodeViewWrapper as="span" className="inline-flex items-center gap-1">
+      <NodeViewWrapper as="span" className="inline-flex items-center gap-1.5">
         <input
           type="text"
           value={draft}
@@ -103,9 +115,15 @@ function InlineMathView({ node, updateAttributes, selected }: NodeViewProps) {
             }
           }}
           className="rounded border border-[var(--color-ring)] bg-[var(--color-card)] px-1 py-0 font-mono text-sm outline-none"
-          style={{ minWidth: 100 }}
-          placeholder="\\frac{a}{b}"
+          style={{ minWidth: 120 }}
+          placeholder="ex: \frac{a}{b}"
         />
+        {draft.trim() && (
+          <span
+            className="align-middle text-sm"
+            dangerouslySetInnerHTML={{ __html: renderKatex(draft, false) }}
+          />
+        )}
       </NodeViewWrapper>
     );
   }
@@ -114,30 +132,32 @@ function InlineMathView({ node, updateAttributes, selected }: NodeViewProps) {
     <NodeViewWrapper
       as="span"
       className={`inline-block cursor-pointer rounded px-0.5 align-middle hover:bg-[var(--color-accent)]/40 ${selected ? "bg-[var(--color-accent)]" : ""}`}
-      onClick={() => setEditing(true)}
+      onClick={() => {
+        setDraft(node.attrs.latex as string);
+        setEditing(true);
+      }}
       contentEditable={false}
       dangerouslySetInnerHTML={{ __html: rendered }}
     />
   );
 }
 
-function BlockMathView({ node, updateAttributes, selected }: NodeViewProps) {
-  const [editing, setEditing] = React.useState(false);
+function BlockMathView({ node, updateAttributes, deleteNode, selected }: NodeViewProps) {
+  const [editing, setEditing] = React.useState(!node.attrs.latex);
   const [draft, setDraft] = React.useState(node.attrs.latex as string);
 
-  const rendered = React.useMemo(() => {
-    try {
-      return katex.renderToString(node.attrs.latex || "", {
-        throwOnError: false,
-        displayMode: true,
-      });
-    } catch {
-      return `<span class="text-rose-400">LaTeX inválido</span>`;
-    }
-  }, [node.attrs.latex]);
+  const rendered = React.useMemo(
+    () => renderKatex(node.attrs.latex as string, true),
+    [node.attrs.latex]
+  );
 
   function save() {
-    updateAttributes({ latex: draft });
+    const v = draft.trim();
+    if (!v) {
+      deleteNode();
+      return;
+    }
+    updateAttributes({ latex: v });
     setEditing(false);
   }
 
@@ -153,13 +173,25 @@ function BlockMathView({ node, updateAttributes, selected }: NodeViewProps) {
           onChange={(e) => setDraft(e.target.value)}
           onBlur={save}
           onKeyDown={(e) => {
-            if (e.key === "Escape") save();
-            if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) save();
+            if (e.key === "Escape") {
+              e.preventDefault();
+              save();
+            }
+            if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+              e.preventDefault();
+              save();
+            }
           }}
           rows={3}
           className="w-full resize-y rounded border border-[var(--color-border)] bg-[var(--color-background)] p-2 font-mono text-sm outline-none"
-          placeholder="\\int_0^1 x^2 dx"
+          placeholder="ex: \int_0^1 x^2\,dx"
         />
+        {draft.trim() && (
+          <div
+            className="mt-2 overflow-x-auto border-t border-[var(--color-border)] pt-2 text-center"
+            dangerouslySetInnerHTML={{ __html: renderKatex(draft, true) }}
+          />
+        )}
         <p className="mt-1 text-[10px] text-[var(--color-muted-foreground)]">
           Esc ou Ctrl+Enter para salvar
         </p>
@@ -170,8 +202,11 @@ function BlockMathView({ node, updateAttributes, selected }: NodeViewProps) {
   return (
     <NodeViewWrapper
       as="div"
-      className={`my-3 cursor-pointer rounded-md p-3 text-center hover:bg-[var(--color-accent)]/40 ${selected ? "bg-[var(--color-accent)]" : ""}`}
-      onClick={() => setEditing(true)}
+      className={`my-3 cursor-pointer overflow-x-auto rounded-md p-3 text-center hover:bg-[var(--color-accent)]/40 ${selected ? "bg-[var(--color-accent)]" : ""}`}
+      onClick={() => {
+        setDraft(node.attrs.latex as string);
+        setEditing(true);
+      }}
       contentEditable={false}
       dangerouslySetInnerHTML={{ __html: rendered }}
     />
