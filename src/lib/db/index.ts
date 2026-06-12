@@ -13,6 +13,7 @@ import {
   type GoalRow,
   type GradeRow,
   type LocalUser,
+  type LousaRow,
   type MindMapRow,
   type NoteRow,
   type ReviewRow,
@@ -38,6 +39,7 @@ class NotedoDB extends Dexie {
   boards!: Table<BoardRow, string>;
   cards!: Table<CardRow, string>;
   notes!: Table<NoteRow, string>;
+  canvases!: Table<LousaRow, string>;
   _sync_state!: Table<SyncStateRow, string>;
   _tombstones!: Table<TombstoneRow, string>;
   _blobs!: Table<BlobRow, string>;
@@ -115,6 +117,11 @@ class NotedoDB extends Dexie {
     // v6: bloco de notas (sincronizável).
     this.version(6).stores({
       notes: "id, userId, pinned, [userId+updatedAt], updatedAt, _dirty",
+    });
+
+    // v7: lousa / quadro livre (sincronizável).
+    this.version(7).stores({
+      canvases: "id, userId, [userId+updatedAt], updatedAt, _dirty",
     });
   }
 }

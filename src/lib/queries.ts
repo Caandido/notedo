@@ -1059,6 +1059,28 @@ export async function getNote(id: string) {
   return n;
 }
 
+// ─── Lousa (quadro livre) ────────────────────────────────────────────────────
+
+export async function getCanvasesForUser() {
+  const userId = getCurrentUserId();
+  const list = live(await db().canvases.where("userId").equals(userId).toArray());
+  list.sort((a, b) => b.updatedAt - a.updatedAt);
+  return list.map((c) => ({
+    id: c.id,
+    title: c.title,
+    elementCount: c.data?.elements?.length ?? 0,
+    updatedAt: c.updatedAt,
+  }));
+}
+export type CanvasListItem = Awaited<ReturnType<typeof getCanvasesForUser>>[number];
+
+export async function getCanvas(id: string) {
+  const userId = getCurrentUserId();
+  const c = await db().canvases.get(id);
+  if (!c || c.userId !== userId) return null;
+  return c;
+}
+
 // ─── Lixeira ──────────────────────────────────────────────────────────────
 
 export type TrashEntry = {

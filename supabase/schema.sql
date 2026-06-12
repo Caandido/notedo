@@ -197,6 +197,18 @@ create table if not exists public.notes (
   deleted_at  timestamptz
 );
 
+-- Lousa: quadro livre (vetores: traços, formas, texto, equações, imagens).
+create table if not exists public.canvases (
+  id          text primary key,
+  user_id     uuid not null references auth.users(id) on delete cascade,
+  title       text not null default '',
+  data        jsonb not null default '{"elements":[]}'::jsonb,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now(),
+  trashed_at  timestamptz,
+  deleted_at  timestamptz
+);
+
 -- Perfil 1:1 com auth.users (id = uuid do usuário).
 create table if not exists public.profiles (
   id          uuid primary key references auth.users(id) on delete cascade,
@@ -226,6 +238,7 @@ alter table public.activities add column if not exists trashed_at timestamptz;
 alter table public.boards     add column if not exists trashed_at timestamptz;
 alter table public.cards      add column if not exists trashed_at timestamptz;
 alter table public.notes      add column if not exists trashed_at timestamptz;
+alter table public.canvases   add column if not exists trashed_at timestamptz;
 -- Cor própria por card (acento). Idempotente.
 alter table public.cards      add column if not exists color text;
 
@@ -244,6 +257,7 @@ create index if not exists boards_user_updated       on public.boards     (user_
 create index if not exists cards_user_updated        on public.cards      (user_id, updated_at);
 create index if not exists cards_board               on public.cards      (board_id);
 create index if not exists notes_user_updated        on public.notes      (user_id, updated_at);
+create index if not exists canvases_user_updated     on public.canvases   (user_id, updated_at);
 create index if not exists profiles_updated         on public.profiles   (id, updated_at);
 
 -- ─────────────────────────────────────────────────────────────────────────
@@ -254,7 +268,7 @@ create index if not exists profiles_updated         on public.profiles   (id, up
 do $$
 declare t text;
 begin
-  foreach t in array array['subjects','topics','sessions','goals','reviews','flashcards','events','grades','mindmaps','activities','boards','cards','notes']
+  foreach t in array array['subjects','topics','sessions','goals','reviews','flashcards','events','grades','mindmaps','activities','boards','cards','notes','canvases']
   loop
     execute format('alter table public.%I enable row level security;', t);
     execute format('drop policy if exists own_rows on public.%I;', t);
@@ -289,7 +303,7 @@ end $$;
 do $$
 declare t text;
 begin
-  foreach t in array array['subjects','topics','sessions','goals','reviews','flashcards','events','grades','mindmaps','activities','boards','cards','notes','profiles']
+  foreach t in array array['subjects','topics','sessions','goals','reviews','flashcards','events','grades','mindmaps','activities','boards','cards','notes','canvases','profiles']
   loop
     execute format('drop trigger if exists lww_guard_trg on public.%I;', t);
     execute format(

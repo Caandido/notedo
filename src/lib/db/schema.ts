@@ -278,6 +278,39 @@ export type NoteRow = SyncMeta & {
 };
 
 /**
+ * Lousa (quadro livre estilo paint) pra resolver exercícios. O conteúdo é uma
+ * lista de elementos vetoriais em `data` (JSON sincronizado). Canvas infinito
+ * com caneta, formas, texto, equações (KaTeX) e imagens.
+ */
+export type LousaPoint = [number, number];
+
+export type LousaElement =
+  | { id: string; t: "stroke"; pts: LousaPoint[]; color: string; w: number }
+  | {
+      id: string;
+      t: "line" | "arrow" | "rect" | "ellipse";
+      x1: number;
+      y1: number;
+      x2: number;
+      y2: number;
+      color: string;
+      w: number;
+    }
+  | { id: string; t: "text"; x: number; y: number; text: string; color: string; size: number }
+  | { id: string; t: "math"; x: number; y: number; latex: string; size: number }
+  | { id: string; t: "image"; x: number; y: number; w: number; h: number; src: string };
+
+export type LousaData = { elements: LousaElement[] };
+
+export type LousaRow = SyncMeta & {
+  id: string;
+  userId: string;
+  title: string;
+  data: LousaData;
+  createdAt: number;
+};
+
+/**
  * Cache local de binários (slides). NÃO sincroniza pelo motor de tabelas —
  * o transporte é o Supabase Storage (ver lib/sync/storage.ts). key = path.
  */
@@ -324,6 +357,7 @@ export const SYNC_TABLES = [
   "boards",
   "cards",
   "notes",
+  "canvases",
 ] as const;
 
 export type SyncTableName = (typeof SYNC_TABLES)[number];
