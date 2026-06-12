@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { fileToDownscaledDataUrl } from "@/lib/image";
 import { Button } from "@/components/ui/button";
 import { cuid } from "@/lib/db";
 import { getCanvas } from "@/lib/queries";
@@ -138,32 +139,6 @@ function katexHtml(latex: string): string {
     return katex.renderToString(latex || "?", { throwOnError: false, displayMode: false });
   } catch {
     return '<span style="color:#fb7185">LaTeX inválido</span>';
-  }
-}
-
-async function fileToDownscaledDataUrl(file: File, max = 1100): Promise<{ src: string; w: number; h: number }> {
-  const url = URL.createObjectURL(file);
-  try {
-    const img = await new Promise<HTMLImageElement>((res, rej) => {
-      const i = new Image();
-      i.onload = () => res(i);
-      i.onerror = rej;
-      i.src = url;
-    });
-    let { width, height } = img;
-    if (width > max || height > max) {
-      const r = Math.min(max / width, max / height);
-      width = Math.round(width * r);
-      height = Math.round(height * r);
-    }
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-    canvas.getContext("2d")!.drawImage(img, 0, 0, width, height);
-    const src = canvas.toDataURL("image/jpeg", 0.82);
-    return { src, w: width, h: height };
-  } finally {
-    URL.revokeObjectURL(url);
   }
 }
 

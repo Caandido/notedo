@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { fileToDownscaledDataUrl } from "@/lib/image";
 import { InlineMath, BlockMath } from "@/components/editor/math-node";
 
 const AUTOSAVE_DELAY_MS = 1200;
@@ -58,6 +59,7 @@ export function RichEditor({
 }: RichEditorProps) {
   const [saveStatus, setSaveStatus] = React.useState<SaveStatus>("idle");
   const saveTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fileRef = React.useRef<HTMLInputElement | null>(null);
 
   const editor = useEditor({
     extensions: [
@@ -131,11 +133,18 @@ export function RichEditor({
     editor.chain().focus().setLink({ href: url }).run();
   }
 
+  // Abre o seletor de arquivo do SO. Sem prompt() de URL — que não funciona no
+  // webview do EXE (Tauri/WebView2), mesma causa do bug das equações.
   function addImage() {
-    if (!editor) return;
-    const url = prompt("URL da imagem (https://...):");
-    if (!url) return;
-    editor.chain().focus().setImage({ src: url }).run();
+    fileRef.current?.click();
+  }
+
+  async function onPickImage(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // permite re-selecionar a mesma imagem depois
+    if (!file || !editor) return;
+    const { src } = await fileToDownscaledDataUrl(file);
+    editor.chain().focus().setImage({ src }).run();
   }
 
   function addTable() {
@@ -156,7 +165,12 @@ export function RichEditor({
 
   if (!editor) return null;
 
-  return <RichEditorInner editor={editor} saveStatus={saveStatus} addLink={addLink} addImage={addImage} addTable={addTable} addMath={addMath} stickyTopClass={stickyTopClass} />;
+  return (
+    <>
+      <RichEditorInner editor={editor} saveStatus={saveStatus} addLink={addLink} addImage={addImage} addTable={addTable} addMath={addMath} stickyTopClass={stickyTopClass} />
+      <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={onPickImage} />
+    </>
+  );
 }
 
 /**
@@ -273,7 +287,7 @@ function RichEditorInner({
           aria="Link"
         />
         <Divider />
-        <ToolbarButton icon={ImageIcon} onClick={addImage} aria="Imagem (URL)" />
+        <ToolbarButton icon={ImageIcon} onClick={addImage} aria="Inserir imagem" />
         <ToolbarButton icon={TableIcon} onClick={addTable} aria="Tabela 3×3" />
         <ToolbarButton
           icon={Sigma}
