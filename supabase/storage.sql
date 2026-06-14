@@ -61,7 +61,9 @@ create policy mindmap_slides_delete on storage.objects for delete
 -- ─────────────────────────────────────────────────────────────────────────
 -- Colaboração: quem tem acesso ao mapa (dono OU colaborador) também acessa os
 -- slides dele. A 2ª pasta do caminho (<user>/<map>/<node>.png) é o map_id.
--- Idempotente. Combina com as políticas acima por OR.
+-- Usa public.can_access_mindmap (definida no schema.sql) pra evitar subselects
+-- aninhados. Idempotente. Combina com as políticas acima por OR.
+-- IMPORTANTE: rodar schema.sql ANTES (cria a função e a tabela de colaboradores).
 -- ─────────────────────────────────────────────────────────────────────────
 drop policy if exists mindmap_slides_collab_select on storage.objects;
 drop policy if exists mindmap_slides_collab_insert on storage.objects;
@@ -70,41 +72,17 @@ drop policy if exists mindmap_slides_collab_update on storage.objects;
 create policy mindmap_slides_collab_select on storage.objects for select
   using (
     bucket_id = 'mindmap-slides'
-    and exists (
-      select 1 from public.mindmaps m
-      where m.id = (storage.foldername(name))[2]
-        and (
-          m.user_id = (select auth.uid())
-          or exists (select 1 from public.mindmap_collaborators c
-                     where c.mindmap_id = m.id and c.user_id = (select auth.uid()))
-        )
-    )
+    and public.can_access_mindmap((storage.foldername(name))[2])
   );
 
 create policy mindmap_slides_collab_insert on storage.objects for insert
   with check (
     bucket_id = 'mindmap-slides'
-    and exists (
-      select 1 from public.mindmaps m
-      where m.id = (storage.foldername(name))[2]
-        and (
-          m.user_id = (select auth.uid())
-          or exists (select 1 from public.mindmap_collaborators c
-                     where c.mindmap_id = m.id and c.user_id = (select auth.uid()))
-        )
-    )
+    and public.can_access_mindmap((storage.foldername(name))[2])
   );
 
 create policy mindmap_slides_collab_update on storage.objects for update
   using (
     bucket_id = 'mindmap-slides'
-    and exists (
-      select 1 from public.mindmaps m
-      where m.id = (storage.foldername(name))[2]
-        and (
-          m.user_id = (select auth.uid())
-          or exists (select 1 from public.mindmap_collaborators c
-                     where c.mindmap_id = m.id and c.user_id = (select auth.uid()))
-        )
-    )
+    and public.can_access_mindmap((storage.foldername(name))[2])
   );

@@ -355,6 +355,25 @@ create policy collab_self_delete on public.mindmap_collaborators for delete
   using (user_id = (select auth.uid()));
 -- (inserts acontecem só via RPC join_mindmap_by_token, security definer.)
 
+-- Acesso a um mapa (dono OU colaborador). SECURITY DEFINER evita recursão de
+-- RLS e deixa as políticas de Storage simples (ver storage.sql).
+create or replace function public.can_access_mindmap(p_map_id text)
+returns boolean
+language sql security definer set search_path = public stable as $$
+  select exists (
+    select 1 from public.mindmaps m
+    where m.id = p_map_id
+      and (
+        m.user_id = auth.uid()
+        or exists (
+          select 1 from public.mindmap_collaborators c
+          where c.mindmap_id = m.id and c.user_id = auth.uid()
+        )
+      )
+  );
+$$;
+grant execute on function public.can_access_mindmap(text) to authenticated;
+
 -- RLS do mapa: dono OU colaborador. Substitui own_rows só pra mindmaps.
 drop policy if exists own_rows on public.mindmaps;
 drop policy if exists mindmap_access on public.mindmaps;
@@ -375,9 +394,10 @@ create policy mindmap_access on public.mindmaps for all
 create or replace function public.join_mindmap_by_token(p_token text, p_name text default null)
 returns table (mindmap_id text, title text)
 language plpgsql security definer set search_path = public as $$
+#variable_conflict use_column
 declare v_id text; v_title text; v_owner uuid;
 begin
-  select id, m.title, user_id into v_id, v_title, v_owner
+  select m.id, m.title, m.user_id into v_id, v_title, v_owner
     from public.mindmaps m
     where m.share_token = p_token and m.deleted_at is null and m.trashed_at is null;
   if v_id is null then
