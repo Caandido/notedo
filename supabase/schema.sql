@@ -244,6 +244,16 @@ alter table public.cards      add column if not exists color text;
 -- Meta de nota por matéria: média alvo (0–10) + peso total do período. Idempotente.
 alter table public.subjects   add column if not exists grade_target double precision;
 alter table public.subjects   add column if not exists grade_total_weight double precision;
+-- Meta de PONTOS por semestre (JSON { "2026.1": 60 }). Semestre nas notas.
+alter table public.subjects   add column if not exists grade_goals jsonb;
+alter table public.grades      add column if not exists semester text;
+-- Multi-matéria em sessões e eventos (JSON array de subject_ids).
+alter table public.sessions    add column if not exists subject_ids jsonb;
+alter table public.events       add column if not exists subject_ids jsonb;
+-- Token de assinatura de calendário (webcal/.ics). Único por usuário.
+alter table public.profiles    add column if not exists calendar_token text;
+create unique index if not exists profiles_calendar_token
+  on public.profiles (calendar_token) where calendar_token is not null;
 
 create index if not exists subjects_user_updated   on public.subjects   (user_id, updated_at);
 create index if not exists topics_user_updated      on public.topics     (user_id, updated_at);
@@ -412,3 +422,35 @@ begin
   return query select v_id, v_title;
 end $$;
 grant execute on function public.join_mindmap_by_token(text, text) to authenticated;
+
+-- ─────────────────────────────────────────────────────────────────────────
+-- Assinatura de calendário (webcal/.ics). Cada usuário tem um token secreto;
+-- a Edge Function `calendar` lê o token da URL e chama calendar_feed (sem
+-- service_role — SECURITY DEFINER já dá o acesso, restrito ao dono do token).
+-- ─────────────────────────────────────────────────────────────────────────
+create or replace function public.ensure_calendar_token()
+returns text
+language plpgsql security definer set search_path = public as $$
+declare v_token text;
+begin
+  select calendar_token into v_token from public.profiles where id = auth.uid();
+  if v_token is null then
+    insert into public.profiles (id) values (auth.uid()) on conflict (id) do nothing;
+    v_token := replace(gen_random_uuid()::text, '-', '');
+    update public.profiles set calendar_token = v_token, updated_at = now()
+      where id = auth.uid();
+  end if;
+  return v_token;
+end $$;
+grant execute on function public.ensure_calendar_token() to authenticated;
+
+create or replace function public.calendar_feed(p_token text)
+returns table (id text, title text, notes text, starts_at timestamptz, type text, done boolean)
+language sql security definer set search_path = public stable as $$
+  select e.id, e.title, e.notes, e.date, e.type, e.done
+  from public.events e
+  join public.profiles p on p.id = e.user_id
+  where p.calendar_token = p_token
+    and e.deleted_at is null and e.trashed_at is null;
+$$;
+grant execute on function public.calendar_feed(text) to anon, authenticated;

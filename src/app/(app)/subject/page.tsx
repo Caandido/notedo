@@ -27,6 +27,11 @@ import { gradeColorByPercent } from "@/components/grades/grade-styles";
 import { cn, formatDuration, formatHours } from "@/lib/utils";
 import { useRepoQuery } from "@/lib/db/use-repo";
 import { getGradesForSubject, getSubjectDetail } from "@/lib/queries";
+import {
+  currentSemester,
+  getStoredSemester,
+  semesterLabel,
+} from "@/lib/semester";
 import { subjectIcon } from "@/lib/subject-icons";
 
 const priorityLabel = {
@@ -64,8 +69,15 @@ export default function SubjectDetailPage() {
 function SubjectDetailContent() {
   const params = useSearchParams();
   const id = params.get("id") ?? "";
+  const semester = React.useMemo(
+    () => getStoredSemester() ?? currentSemester(),
+    []
+  );
   const detailQ = useRepoQuery(() => getSubjectDetail(id), [id]);
-  const gradesQ = useRepoQuery(() => getGradesForSubject(id), [id]);
+  const gradesQ = useRepoQuery(
+    () => getGradesForSubject(id, semester),
+    [id, semester]
+  );
 
   if (detailQ.loading || gradesQ.loading) return <PageLoading />;
   if (!detailQ.data) notFound();
@@ -74,9 +86,8 @@ function SubjectDetailContent() {
     gradesQ.data ?? {
       grades: [],
       average: null,
-      target: null,
-      totalWeight: null,
-      projection: null,
+      semester,
+      pointsGoal: null,
     };
 
   const { subject, topics, topicCount, totalSeconds, sessionCount, recentSessions } =
@@ -191,6 +202,9 @@ function SubjectDetailContent() {
             <CardTitle className="flex items-center gap-2 text-sm">
               <GraduationCap className="size-4 text-[var(--color-muted-foreground)]" />
               Notas
+              <Badge variant="outline" className="text-[10px]">
+                {semesterLabel(semester)}
+              </Badge>
               {gradesData.grades.length > 0 && (
                 <Badge variant="outline" className="text-[10px]">
                   {gradesData.grades.length}
@@ -217,10 +231,18 @@ function SubjectDetailContent() {
             )}
           </CardHeader>
           <CardContent className="space-y-3">
-            {gradesData.projection && (
-              <GradeGoal subjectId={subject.id} projection={gradesData.projection} />
+            {gradesData.pointsGoal && (
+              <GradeGoal
+                subjectId={subject.id}
+                semester={semester}
+                goal={gradesData.pointsGoal}
+              />
             )}
-            <GradeForm subjects={subjectOption} defaultSubjectId={subject.id} />
+            <GradeForm
+              subjects={subjectOption}
+              defaultSubjectId={subject.id}
+              defaultSemester={semester}
+            />
             {gradesData.grades.length === 0 ? (
               <p className="text-sm text-[var(--color-muted-foreground)]">
                 Nenhuma nota registrada nesta matéria ainda.

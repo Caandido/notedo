@@ -13,7 +13,7 @@ type SubjectOption = { id: string; name: string; color: string };
 
 interface AddSessionDialogProps {
   subjects: SubjectOption[];
-  defaultSubjectId?: string | null;
+  defaultSubjectIds?: string[];
   onClose: () => void;
 }
 
@@ -39,13 +39,21 @@ function nowParts(): { date: string; time: string } {
  */
 export function AddSessionDialog({
   subjects,
-  defaultSubjectId,
+  defaultSubjectIds,
   onClose,
 }: AddSessionDialogProps) {
   const router = useRouter();
   const init = React.useMemo(nowParts, []);
-  const [subjectId, setSubjectId] = React.useState(defaultSubjectId ?? "");
+  const [subjectIds, setSubjectIds] = React.useState<string[]>(
+    defaultSubjectIds ?? []
+  );
   const [mode, setMode] = React.useState<TimerMode>("free");
+
+  function toggleSubject(id: string) {
+    setSubjectIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  }
   const [hours, setHours] = React.useState("0");
   const [minutes, setMinutes] = React.useState("30");
   const [date, setDate] = React.useState(init.date);
@@ -76,7 +84,8 @@ export function AddSessionDialog({
     setSubmitting(true);
     setError(null);
     const result = await saveStudySession({
-      subjectId: subjectId || null,
+      subjectId: subjectIds[0] ?? null,
+      subjectIds,
       mode,
       durationSeconds,
       startedAt: startedAt.toISOString(),
@@ -173,20 +182,39 @@ export function AddSessionDialog({
 
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-[var(--color-muted-foreground)]">
-              Matéria <span className="opacity-60">(opcional)</span>
+              Matérias <span className="opacity-60">(opcional · pode escolher várias)</span>
             </label>
-            <select
-              value={subjectId}
-              onChange={(e) => setSubjectId(e.target.value)}
-              className="h-9 w-full rounded-md border border-[var(--color-border)] bg-[var(--color-background)] px-3 text-sm outline-none transition-colors focus:border-[var(--color-ring)]"
-            >
-              <option value="">— Sem matéria —</option>
-              {subjects.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
+            {subjects.length === 0 ? (
+              <p className="text-xs text-[var(--color-muted-foreground)]">
+                Nenhuma matéria cadastrada.
+              </p>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {subjects.map((s) => {
+                  const active = subjectIds.includes(s.id);
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => toggleSubject(s.id)}
+                      className={cn(
+                        "flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs transition-colors",
+                        active
+                          ? "border-[var(--color-ring)] bg-[var(--color-accent)] text-[var(--color-accent-foreground)]"
+                          : "border-[var(--color-border)] text-[var(--color-muted-foreground)] hover:text-[var(--color-foreground)]"
+                      )}
+                      aria-pressed={active}
+                    >
+                      <span
+                        className="size-1.5 rounded-full"
+                        style={{ backgroundColor: s.color }}
+                      />
+                      {s.name}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           <div className="space-y-1.5">

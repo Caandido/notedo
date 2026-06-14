@@ -14,9 +14,14 @@ interface SubjectAverageCardProps {
     count: number;
     average: number | null;
     target?: number | null;
+    accumulated?: number;
+    remaining?: number | null;
+    reached?: boolean;
     atRisk?: boolean;
   };
 }
+
+const fmtPts = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
 
 export function SubjectAverageCard({ subject }: SubjectAverageCardProps) {
   const avg = subject.average;
@@ -69,8 +74,19 @@ export function SubjectAverageCard({ subject }: SubjectAverageCardProps) {
               <p className="text-xs text-[var(--color-muted-foreground)]">
                 {subject.count} {subject.count === 1 ? "nota" : "notas"} ·
                 média ponderada / 10
-                {hasTarget && ` · meta ${subject.target!.toFixed(1)}`}
               </p>
+              {hasTarget && (
+                <p
+                  className={cn(
+                    "text-xs",
+                    subject.reached ? "text-emerald-300" : "text-amber-300"
+                  )}
+                >
+                  {subject.reached
+                    ? `meta ${fmtPts(subject.target!)} pts atingida`
+                    : `${fmtPts(subject.accumulated ?? 0)}/${fmtPts(subject.target!)} pts · faltam ${fmtPts(subject.remaining ?? 0)}`}
+                </p>
+              )}
             </>
           ) : (
             <p className="text-xs text-[var(--color-muted-foreground)]">

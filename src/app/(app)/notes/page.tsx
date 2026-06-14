@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import { GraduationCap } from "lucide-react";
 
 import { Header } from "@/components/layout/header";
@@ -12,15 +13,33 @@ import { gradeColorByPercent } from "@/components/grades/grade-styles";
 import { cn } from "@/lib/utils";
 import { useRepoQuery } from "@/lib/db/use-repo";
 import {
+  getGradeSemesters,
   getGradesForUser,
   getGradesSummary,
   getSubjectsForUser,
 } from "@/lib/queries";
+import {
+  ALL_SEMESTERS,
+  currentSemester,
+  getStoredSemester,
+  semesterLabel,
+  setStoredSemester,
+} from "@/lib/semester";
 
 export default function NotesPage() {
-  const gradesQ = useRepoQuery(() => getGradesForUser(), []);
-  const summaryQ = useRepoQuery(() => getGradesSummary(), []);
+  const [semester, setSemester] = React.useState<string>(
+    () => getStoredSemester() ?? currentSemester()
+  );
+
+  const semestersQ = useRepoQuery(() => getGradeSemesters(), []);
+  const gradesQ = useRepoQuery(() => getGradesForUser(semester), [semester]);
+  const summaryQ = useRepoQuery(() => getGradesSummary(semester), [semester]);
   const subjectsQ = useRepoQuery(() => getSubjectsForUser(), []);
+
+  function changeSemester(s: string) {
+    setSemester(s);
+    setStoredSemester(s);
+  }
 
   if (
     gradesQ.loading || !gradesQ.data ||
@@ -36,9 +55,11 @@ export default function NotesPage() {
     name: s.name,
     color: s.color,
   }));
+  const semesters = semestersQ.data ?? [currentSemester()];
 
   const overallPercent =
     summary.overallAverage !== null ? (summary.overallAverage / 10) * 100 : 0;
+  const formSemester = semester === ALL_SEMESTERS ? currentSemester() : semester;
 
   return (
     <>
@@ -51,7 +72,26 @@ export default function NotesPage() {
         }
       />
       <div className="space-y-6 p-6">
-        <GradeForm subjects={subjectOptions} />
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <GradeForm subjects={subjectOptions} defaultSemester={formSemester} />
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-medium text-[var(--color-muted-foreground)]">
+              Semestre
+            </label>
+            <select
+              value={semester}
+              onChange={(e) => changeSemester(e.target.value)}
+              className="h-9 rounded-md border border-[var(--color-border)] bg-[var(--color-background)] px-3 text-sm outline-none transition-colors focus:border-[var(--color-ring)]"
+            >
+              <option value={ALL_SEMESTERS}>{semesterLabel(ALL_SEMESTERS)}</option>
+              {semesters.map((s) => (
+                <option key={s || "none"} value={s}>
+                  {semesterLabel(s)}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
 
         {grades.length === 0 ? (
           <Card>
@@ -59,10 +99,14 @@ export default function NotesPage() {
               <div className="flex size-10 items-center justify-center rounded-full bg-[var(--color-secondary)]">
                 <GraduationCap className="size-5 text-[var(--color-muted-foreground)]" />
               </div>
-              <h2 className="text-lg font-semibold">Nenhuma nota ainda</h2>
+              <h2 className="text-lg font-semibold">
+                {semester === ALL_SEMESTERS
+                  ? "Nenhuma nota ainda"
+                  : `Nenhuma nota em ${semesterLabel(semester)}`}
+              </h2>
               <p className="max-w-md text-sm text-[var(--color-muted-foreground)]">
-                Registre provas, trabalhos, quizzes — cada nota tem peso e máxima
-                configuráveis. A média ponderada aparece por matéria e no geral.
+                Registre provas, trabalhos, quizzes — cada nota tem peso, máxima e
+                semestre. A média e a meta de pontos aparecem por matéria.
               </p>
             </CardContent>
           </Card>
@@ -85,7 +129,9 @@ export default function NotesPage() {
                     </span>
                   </div>
                   <div className="flex-1">
-                    <p className="text-sm font-semibold">Média geral</p>
+                    <p className="text-sm font-semibold">
+                      Média geral · {semesterLabel(semester)}
+                    </p>
                     <p className="text-xs text-[var(--color-muted-foreground)]">
                       Ponderada por peso, normalizada para escala 0–10
                     </p>

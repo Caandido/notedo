@@ -11,6 +11,7 @@ import {
   GRADE_TYPE_LABEL,
   type GradeType,
 } from "@/components/grades/grade-styles";
+import { currentSemester } from "@/lib/semester";
 import { cn } from "@/lib/utils";
 
 type SubjectOption = { id: string; name: string; color: string };
@@ -18,6 +19,8 @@ type SubjectOption = { id: string; name: string; color: string };
 interface GradeFormProps {
   subjects: SubjectOption[];
   defaultSubjectId?: string;
+  /** Semestre pré-preenchido em notas novas (semestre ativo da tela). */
+  defaultSemester?: string;
   /** Quando informado, abre em modo de edição */
   editing?: {
     id: string;
@@ -28,6 +31,7 @@ interface GradeFormProps {
     maxScore: number;
     weight: number;
     date: Date | string;
+    semester?: string | null;
     comments: string | null;
   };
   onClose?: () => void;
@@ -44,6 +48,7 @@ const TYPES: GradeType[] = ["exam", "assignment", "quiz", "other"];
 export function GradeForm({
   subjects,
   defaultSubjectId,
+  defaultSemester,
   editing,
   onClose,
 }: GradeFormProps) {
@@ -52,6 +57,10 @@ export function GradeForm({
   const [open, setOpen] = React.useState(isEdit);
   const [subjectId, setSubjectId] = React.useState(
     editing?.subjectId ?? defaultSubjectId ?? ""
+  );
+  const fallbackSemester = defaultSemester ?? currentSemester();
+  const [semester, setSemester] = React.useState(
+    editing?.semester ?? fallbackSemester
   );
   const [title, setTitle] = React.useState(editing?.title ?? "");
   const [type, setType] = React.useState<GradeType>(editing?.type ?? "exam");
@@ -82,6 +91,7 @@ export function GradeForm({
     setMaxScore("10");
     setWeight("1");
     setDate(todayInput());
+    setSemester(fallbackSemester);
     setComments("");
     setError(null);
   }
@@ -108,6 +118,7 @@ export function GradeForm({
       maxScore: m,
       weight: w,
       date: new Date(`${date}T12:00:00`).toISOString(),
+      semester: semester.trim() || null,
       comments: comments.trim() || undefined,
     };
 
@@ -257,16 +268,31 @@ export function GradeForm({
             </div>
           </div>
 
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-[var(--color-muted-foreground)]">
-              Data
-            </label>
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              className="h-9 w-full rounded-md border border-[var(--color-border)] bg-[var(--color-background)] px-3 text-sm outline-none transition-colors focus:border-[var(--color-ring)]"
-            />
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-[var(--color-muted-foreground)]">
+                Data
+              </label>
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="h-9 w-full rounded-md border border-[var(--color-border)] bg-[var(--color-background)] px-3 text-sm outline-none transition-colors focus:border-[var(--color-ring)]"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-[var(--color-muted-foreground)]">
+                Semestre
+              </label>
+              <input
+                type="text"
+                value={semester}
+                onChange={(e) => setSemester(e.target.value)}
+                placeholder="ex: 2026.1"
+                maxLength={20}
+                className="h-9 w-full rounded-md border border-[var(--color-border)] bg-[var(--color-background)] px-3 text-sm outline-none transition-colors focus:border-[var(--color-ring)]"
+              />
+            </div>
           </div>
 
           <div className="space-y-1.5">

@@ -100,34 +100,32 @@ export async function updateSubject(input: UpdateSubjectInput) {
 }
 
 /**
- * Define (ou limpa) a meta de nota da matéria: média alvo na escala 0–10 e,
- * opcionalmente, o peso total do período (soma dos pesos de todas as avaliações).
- * Passe `null` em qualquer campo pra limpar.
+ * Define (ou limpa) a meta de PONTOS da matéria para um semestre específico.
+ * Guarda em `gradeGoals` ({ [semestre]: pontos }). Passe `target = null` pra
+ * remover a meta daquele semestre.
  */
-export async function setSubjectGradeGoal(input: {
+export async function setSubjectSemesterGoal(input: {
   id: string;
+  semester: string;
   target: number | null;
-  totalWeight: number | null;
 }) {
   const userId = getCurrentUserId();
   const subject = await db().subjects.get(input.id);
   if (!subject || subject.userId !== userId)
     return { ok: false as const, error: "Matéria não encontrada." };
+  if (!input.semester || input.semester === "ALL")
+    return { ok: false as const, error: "Escolha um semestre específico." };
   if (
     input.target !== null &&
-    (!Number.isFinite(input.target) || input.target < 0 || input.target > 10)
+    (!Number.isFinite(input.target) || input.target <= 0)
   )
-    return { ok: false as const, error: "Meta deve ser entre 0 e 10." };
-  if (
-    input.totalWeight !== null &&
-    (!Number.isFinite(input.totalWeight) || input.totalWeight <= 0)
-  )
-    return { ok: false as const, error: "Peso total inválido." };
+    return { ok: false as const, error: "Meta de pontos inválida." };
 
-  await writeUpdate("subjects", input.id, {
-    gradeTarget: input.target,
-    gradeTotalWeight: input.totalWeight,
-  });
+  const goals: Record<string, number> = { ...(subject.gradeGoals ?? {}) };
+  if (input.target === null) delete goals[input.semester];
+  else goals[input.semester] = input.target;
+
+  await writeUpdate("subjects", input.id, { gradeGoals: goals });
   invalidateAll();
   return { ok: true as const };
 }

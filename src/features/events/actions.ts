@@ -15,8 +15,32 @@ export type CreateEventInput = {
   type: EventType;
   date: string;
   subjectId?: string | null;
+  /** Multi-matéria: o evento pode pertencer a várias matérias. */
+  subjectIds?: string[];
   notes?: string;
 };
+
+/** Normaliza e valida a lista de matérias (multi-matéria). */
+async function resolveSubjectIds(
+  input: { subjectId?: string | null; subjectIds?: string[] },
+  userId: string
+): Promise<{ ids: string[] } | { error: string }> {
+  const ids = Array.from(
+    new Set(
+      (input.subjectIds && input.subjectIds.length
+        ? input.subjectIds
+        : input.subjectId
+          ? [input.subjectId]
+          : []
+      ).filter(Boolean)
+    )
+  );
+  for (const sid of ids) {
+    const subject = await db().subjects.get(sid);
+    if (!subject || subject.userId !== userId) return { error: "Matéria não encontrada." };
+  }
+  return { ids };
+}
 
 export async function createEvent(input: CreateEventInput) {
   const title = input.title.trim();
@@ -27,17 +51,15 @@ export async function createEvent(input: CreateEventInput) {
   if (Number.isNaN(ts)) return { ok: false as const, error: "Data inválida." };
 
   const userId = getCurrentUserId();
-  if (input.subjectId) {
-    const subject = await db().subjects.get(input.subjectId);
-    if (!subject || subject.userId !== userId)
-      return { ok: false as const, error: "Matéria não encontrada." };
-  }
+  const r = await resolveSubjectIds(input, userId);
+  if ("error" in r) return { ok: false as const, error: r.error };
 
   const now = Date.now();
   await writeAdd("events", {
     id: cuid(),
     userId,
-    subjectId: input.subjectId ?? null,
+    subjectId: r.ids[0] ?? null,
+    subjectIds: r.ids.length ? r.ids : null,
     type: input.type.toUpperCase() as "EXAM" | "TASK" | "CLASS" | "CUSTOM",
     title,
     notes: input.notes?.trim() || null,
@@ -63,11 +85,15 @@ export async function updateEvent(input: UpdateEventInput) {
   if (!event || event.userId !== userId)
     return { ok: false as const, error: "Evento não encontrado." };
 
+  const r = await resolveSubjectIds(input, userId);
+  if ("error" in r) return { ok: false as const, error: r.error };
+
   await writeUpdate("events", input.id, {
     title,
     type: input.type.toUpperCase() as "EXAM" | "TASK" | "CLASS" | "CUSTOM",
     date: ts,
-    subjectId: input.subjectId ?? null,
+    subjectId: r.ids[0] ?? null,
+    subjectIds: r.ids.length ? r.ids : null,
     notes: input.notes?.trim() || null,
   });
   invalidateAll();

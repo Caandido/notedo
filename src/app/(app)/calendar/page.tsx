@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { Header } from "@/components/layout/header";
 import { PageLoading } from "@/components/layout/page-loading";
 import { CalendarView } from "@/components/calendar/calendar-view";
+import { CalendarSubscribe } from "@/components/calendar/calendar-subscribe";
 import { formatHours } from "@/lib/utils";
 import { useRepoQuery } from "@/lib/db/use-repo";
 import { getCalendarMonth, getSubjectsForUser } from "@/lib/queries";
@@ -47,7 +48,10 @@ function CalendarPageContent() {
         title="Calendário"
         subtitle={`${formatHours(data.totalSeconds)} em ${data.activeDays} dia${data.activeDays === 1 ? "" : "s"} ativo${data.activeDays === 1 ? "" : "s"} · ${data.sessionCount} sessões · ${data.reviewCount} revisões · ${data.eventCount} eventos`}
       />
-      <div className="p-6">
+      <div className="space-y-4 p-6">
+        <div className="flex justify-end">
+          <CalendarSubscribe />
+        </div>
         <CalendarView
           year={year}
           month={month}

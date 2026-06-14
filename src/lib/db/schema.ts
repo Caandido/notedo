@@ -33,14 +33,16 @@ export type SubjectRow = SyncMeta & {
   progress: number;
   tags: string[];
   archived: boolean;
-  /** Meta de nota (média alvo, escala 0–10). null = sem meta. */
+  /** Meta de nota (média alvo, escala 0–10). null = sem meta. (legado) */
   gradeTarget?: number | null;
-  /**
-   * Peso total do período (soma dos pesos de TODAS as avaliações, inclusive as
-   * que ainda não foram lançadas). Com ele, o app calcula a média necessária no
-   * peso restante pra bater a meta. null = desconhecido (só compara média atual).
-   */
+  /** Peso total do período (legado — substituído por gradeGoals em pontos). */
   gradeTotalWeight?: number | null;
+  /**
+   * Meta de PONTOS por semestre: { [semestre]: pontos a atingir }. Ex.:
+   * { "2026.1": 60 }. O app soma os `score` das notas do semestre e mostra
+   * quanto falta. "" (string vazia) = notas sem semestre definido.
+   */
+  gradeGoals?: Record<string, number> | null;
   createdAt: number;
 };
 
@@ -58,7 +60,13 @@ export type TopicRow = SyncMeta & {
 export type StudySessionRow = SyncMeta & {
   id: string;
   userId: string;
+  /** Matéria "principal" (1ª selecionada) — compat. com leituras antigas. */
   subjectId: string | null;
+  /**
+   * Todas as matérias da sessão (multi-matéria). O tempo conta pra cada uma nas
+   * agregações. Vazio/ausente → usa [subjectId] se houver.
+   */
+  subjectIds?: string[] | null;
   topicId: string | null;
   mode: "POMODORO" | "FREE" | "REVERSE" | "CUSTOM";
   startedAt: number;
@@ -109,6 +117,8 @@ export type CalendarEventRow = SyncMeta & {
   id: string;
   userId: string;
   subjectId: string | null;
+  /** Matérias do evento (multi-matéria). Vazio → usa [subjectId] se houver. */
+  subjectIds?: string[] | null;
   type: "EXAM" | "TASK" | "CLASS" | "CUSTOM";
   title: string;
   notes: string | null;
@@ -127,6 +137,8 @@ export type GradeRow = SyncMeta & {
   maxScore: number;
   weight: number;
   date: number;
+  /** Semestre/período, ex.: "2026.1". null/"" = sem semestre definido. */
+  semester?: string | null;
   comments: string | null;
   createdAt: number;
 };

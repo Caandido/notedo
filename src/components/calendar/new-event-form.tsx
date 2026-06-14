@@ -36,8 +36,14 @@ export function NewEventForm({
   const [title, setTitle] = React.useState("");
   const [type, setType] = React.useState<EventType>("exam");
   const [date, setDate] = React.useState(defaultDate ?? todayInput());
-  const [subjectId, setSubjectId] = React.useState("");
+  const [subjectIds, setSubjectIds] = React.useState<string[]>([]);
   const [notes, setNotes] = React.useState("");
+
+  function toggleSubject(id: string) {
+    setSubjectIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  }
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -50,7 +56,7 @@ export function NewEventForm({
     setTitle("");
     setType("exam");
     setDate(defaultDate ?? todayInput());
-    setSubjectId("");
+    setSubjectIds([]);
     setNotes("");
     setError(null);
   }
@@ -65,7 +71,7 @@ export function NewEventForm({
       title,
       type,
       date: scheduledAt,
-      subjectId: subjectId || null,
+      subjectIds,
       notes,
     });
     setSubmitting(false);
@@ -145,38 +151,50 @@ export function NewEventForm({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-[var(--color-muted-foreground)]">
+              Data
+            </label>
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="h-9 w-full rounded-md border border-[var(--color-border)] bg-[var(--color-background)] px-3 text-sm outline-none transition-colors focus:border-[var(--color-ring)]"
+            />
+          </div>
+
+          {subjects.length > 0 && (
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-[var(--color-muted-foreground)]">
-                Data
+                Matérias <span className="opacity-60">(pode escolher várias)</span>
               </label>
-              <input
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                className="h-9 w-full rounded-md border border-[var(--color-border)] bg-[var(--color-background)] px-3 text-sm outline-none transition-colors focus:border-[var(--color-ring)]"
-              />
-            </div>
-            {subjects.length > 0 && (
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-[var(--color-muted-foreground)]">
-                  Matéria
-                </label>
-                <select
-                  value={subjectId}
-                  onChange={(e) => setSubjectId(e.target.value)}
-                  className="h-9 w-full rounded-md border border-[var(--color-border)] bg-[var(--color-background)] px-3 text-sm outline-none transition-colors focus:border-[var(--color-ring)]"
-                >
-                  <option value="">— Sem matéria —</option>
-                  {subjects.map((s) => (
-                    <option key={s.id} value={s.id}>
+              <div className="flex flex-wrap gap-1.5">
+                {subjects.map((s) => {
+                  const active = subjectIds.includes(s.id);
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => toggleSubject(s.id)}
+                      className={cn(
+                        "flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs transition-colors",
+                        active
+                          ? "border-[var(--color-ring)] bg-[var(--color-accent)] text-[var(--color-accent-foreground)]"
+                          : "border-[var(--color-border)] text-[var(--color-muted-foreground)] hover:text-[var(--color-foreground)]"
+                      )}
+                      aria-pressed={active}
+                    >
+                      <span
+                        className="size-1.5 rounded-full"
+                        style={{ backgroundColor: s.color }}
+                      />
                       {s.name}
-                    </option>
-                  ))}
-                </select>
+                    </button>
+                  );
+                })}
               </div>
-            )}
-          </div>
+            </div>
+          )}
 
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-[var(--color-muted-foreground)]">

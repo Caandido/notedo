@@ -30,6 +30,7 @@ interface GradeRowProps {
     maxScore: number;
     weight: number;
     date: Date | string;
+    semester?: string | null;
     comments: string | null;
     percent: number;
   };

@@ -44,8 +44,8 @@ export function TimerPageContent({ subjects }: TimerPageContentProps) {
     setMode,
   } = useTimerStore();
 
-  const [selectedSubject, setSelectedSubject] = React.useState<string | null>(
-    subjectId
+  const [selectedSubjects, setSelectedSubjects] = React.useState<string[]>(
+    subjectId ? [subjectId] : []
   );
   const [saveState, setSaveState] = React.useState<SaveState>("idle");
   const [saveError, setSaveError] = React.useState<string | null>(null);
@@ -87,14 +87,21 @@ export function TimerPageContent({ subjects }: TimerPageContentProps) {
     if (isComplete && running) pause();
   }, [isComplete, running, pause]);
 
-  const currentSubject = subjects.find((s) => s.id === selectedSubject);
+  const currentSubjects = subjects.filter((s) => selectedSubjects.includes(s.id));
+
+  function toggleSubject(id: string) {
+    setSelectedSubjects((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  }
 
   async function handleSave() {
     if (elapsedSeconds < 1) return;
     setSaveState("saving");
     setSaveError(null);
     const result = await saveStudySession({
-      subjectId: selectedSubject,
+      subjectId: selectedSubjects[0] ?? null,
+      subjectIds: selectedSubjects,
       mode,
       durationSeconds: elapsedSeconds,
     });
@@ -150,7 +157,7 @@ export function TimerPageContent({ subjects }: TimerPageContentProps) {
           <Button
             size="lg"
             className="gap-2 px-6"
-            onClick={() => start(selectedSubject ?? undefined)}
+            onClick={() => start(selectedSubjects[0] ?? undefined)}
             disabled={isComplete}
           >
             <Play className="size-4 fill-current" />
@@ -206,7 +213,7 @@ export function TimerPageContent({ subjects }: TimerPageContentProps) {
         <CardContent className="flex flex-col gap-3 p-5">
           <div className="flex items-center justify-between">
             <p className="text-xs font-medium text-[var(--color-muted-foreground)]">
-              Estudando
+              Estudando {selectedSubjects.length > 1 && `(${selectedSubjects.length} matérias)`}
             </p>
             <p className="text-xs text-[var(--color-muted-foreground)]">
               {elapsedSeconds > 0 &&
@@ -227,13 +234,11 @@ export function TimerPageContent({ subjects }: TimerPageContentProps) {
           ) : (
             <div className="flex flex-wrap gap-1.5">
               {subjects.map((subject) => {
-                const active = selectedSubject === subject.id;
+                const active = selectedSubjects.includes(subject.id);
                 return (
                   <button
                     key={subject.id}
-                    onClick={() =>
-                      setSelectedSubject(active ? null : subject.id)
-                    }
+                    onClick={() => toggleSubject(subject.id)}
                     className={cn(
                       "flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs transition-colors",
                       active
@@ -251,12 +256,13 @@ export function TimerPageContent({ subjects }: TimerPageContentProps) {
               })}
             </div>
           )}
-          {currentSubject && (
+          {currentSubjects.length > 0 && (
             <p className="text-xs text-[var(--color-muted-foreground)]">
               Sessão será atribuída a{" "}
               <span className="text-[var(--color-foreground)]">
-                {currentSubject.name}
+                {currentSubjects.map((s) => s.name).join(", ")}
               </span>
+              {currentSubjects.length > 1 && " (o tempo conta pra cada uma)"}
             </p>
           )}
         </CardContent>
@@ -271,7 +277,7 @@ export function TimerPageContent({ subjects }: TimerPageContentProps) {
       {addOpen && (
         <AddSessionDialog
           subjects={subjects}
-          defaultSubjectId={selectedSubject}
+          defaultSubjectIds={selectedSubjects}
           onClose={() => setAddOpen(false)}
         />
       )}

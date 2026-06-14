@@ -18,6 +18,7 @@ export type CreateGradeInput = {
   maxScore: number;
   weight: number;
   date: string;
+  semester?: string | null;
   comments?: string;
 };
 
@@ -56,6 +57,7 @@ export async function createGrade(input: CreateGradeInput) {
     maxScore: input.maxScore,
     weight: input.weight,
     date: dateInputToMs(input.date),
+    semester: input.semester?.trim() || null,
     comments: input.comments?.trim() || null,
     createdAt: now,
     updatedAt: now,
@@ -87,6 +89,7 @@ export async function updateGrade(input: UpdateGradeInput) {
     maxScore: input.maxScore,
     weight: input.weight,
     date: dateInputToMs(input.date),
+    semester: input.semester?.trim() || null,
     comments: input.comments?.trim() || null,
   });
   invalidateAll();

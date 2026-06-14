@@ -2,6 +2,7 @@
 
 import { db } from "@/lib/db";
 import { getCurrentUserId } from "@/lib/auth";
+import { ALL_SEMESTERS, currentSemester } from "@/lib/semester";
 import type {
   CalendarEventRow,
   GoalRow,
@@ -54,6 +55,19 @@ async function userSessions(userId: string) {
   return live(await db().sessions.where("userId").equals(userId).toArray());
 }
 
+/**
+ * Matérias de uma sessão (multi-matéria). Usa subjectIds; se vazio, cai pra
+ * [subjectId] (sessões antigas, de uma matéria só). O tempo da sessão é contado
+ * pra CADA matéria retornada nas agregações.
+ */
+export function sessionSubjects(s: {
+  subjectId?: string | null;
+  subjectIds?: string[] | null;
+}): string[] {
+  if (s.subjectIds && s.subjectIds.length) return s.subjectIds;
+  return s.subjectId ? [s.subjectId] : [];
+}
+
 // ─── Subjects ──────────────────────────────────────────────────────────────
 
 export async function getSubjectsForUser() {
@@ -63,7 +77,7 @@ export async function getSubjectsForUser() {
 
   const allSessions = await userSessions(userId);
   return subjects.map((s) => {
-    const sessions = allSessions.filter((x) => x.subjectId === s.id);
+    const sessions = allSessions.filter((x) => sessionSubjects(x).includes(s.id));
     return {
       id: s.id,
       name: s.name,
@@ -131,10 +145,14 @@ export async function getSubjectDetail(subjectId: string) {
 
   const [topicsRaw, sessionsRaw] = await Promise.all([
     db().topics.where("subjectId").equals(subjectId).toArray(),
-    db().sessions.where("subjectId").equals(subjectId).toArray(),
+    // multi-matéria: carrega as sessões do usuário e filtra por inclusão
+    // (uma sessão pode pertencer a várias matérias).
+    db().sessions.where("userId").equals(userId).toArray(),
   ]);
   const topics = live(topicsRaw);
-  const allSessions = live(sessionsRaw);
+  const allSessions = live(sessionsRaw).filter((s) =>
+    sessionSubjects(s).includes(subjectId)
+  );
 
   const tree = buildTopicTree(topics, null);
   const recent = [...allSessions]
@@ -358,7 +376,13 @@ export type DueCard = Awaited<ReturnType<typeof getDueFlashcards>>[number];
 // ─── Events ───────────────────────────────────────────────────────────────
 
 function eventToView(e: CalendarEventRow, subjects: Map<string, { id: string; name: string; color: string }>) {
-  const subj = e.subjectId ? subjects.get(e.subjectId) : undefined;
+  const ids = e.subjectIds && e.subjectIds.length ? e.subjectIds : e.subjectId ? [e.subjectId] : [];
+  const subs = ids.map((id) => subjects.get(id)).filter(Boolean) as {
+    id: string;
+    name: string;
+    color: string;
+  }[];
+  const subj = subs[0];
   return {
     id: e.id,
     title: e.title,
@@ -369,6 +393,7 @@ function eventToView(e: CalendarEventRow, subjects: Map<string, { id: string; na
     subjectId: subj?.id ?? null,
     subjectName: subj?.name ?? null,
     subjectColor: subj?.color ?? null,
+    subjectNames: subs.map((s) => s.name),
   };
 }
 
@@ -405,6 +430,7 @@ function gradeToView(g: GradeRow, subjects: Map<string, { id: string; name: stri
     maxScore: g.maxScore,
     weight: g.weight,
     date: new Date(g.date),
+    semester: g.semester ?? "",
     comments: g.comments,
     percent,
   };
@@ -417,103 +443,95 @@ function weightedAverage(grades: { score: number; maxScore: number; weight: numb
   return grades.reduce((a, g) => a + (g.score / g.maxScore) * 10 * g.weight, 0) / tw;
 }
 
-/**
- * Projeção da meta de nota de uma matéria.
- * - `needs`: com peso total informado, devolve a média (0–10) necessária no peso
- *   restante pra bater a meta.
- * - `guaranteed`/`impossible`: meta já garantida / inatingível mesmo tirando 10.
- * - sem peso total: só compara a média atual com a meta (`reached`/`behind`).
- */
-export type GradeProjection = {
-  average: number | null;
+/** A nota pertence ao semestre filtrado? ALL = qualquer; "" = sem semestre. */
+function inSemester(g: { semester?: string | null }, semester: string): boolean {
+  if (semester === ALL_SEMESTERS) return true;
+  return (g.semester ?? "") === semester;
+}
+
+/** Meta de PONTOS da matéria pro semestre dado (null em "todos" ou sem meta). */
+function goalForSemester(
+  subject: { gradeGoals?: Record<string, number> | null },
+  semester: string
+): number | null {
+  if (semester === ALL_SEMESTERS) return null;
+  const v = subject.gradeGoals?.[semester];
+  return typeof v === "number" ? v : null;
+}
+
+export type GradePointsGoal = {
+  semester: string;
+  accumulated: number;
   target: number | null;
-  totalWeight: number | null;
-  doneWeight: number;
-  remainingWeight: number | null;
-  requiredOnRemaining: number | null;
-  status:
-    | "no-target"
-    | "no-grades"
-    | "reached"
-    | "behind"
-    | "needs"
-    | "guaranteed"
-    | "impossible";
+  remaining: number | null;
+  reached: boolean;
   atRisk: boolean;
 };
 
-function gradeProjection(
-  grades: { score: number; maxScore: number; weight: number }[],
+function pointsGoal(
+  grades: { score: number }[],
   target: number | null,
-  totalWeight: number | null
-): GradeProjection {
-  const average = weightedAverage(grades);
-  const doneWeight = grades.reduce((a, g) => a + g.weight, 0);
-  const base = {
-    average,
-    target,
-    totalWeight,
-    doneWeight,
-    remainingWeight: null as number | null,
-    requiredOnRemaining: null as number | null,
-  };
-  if (target === null) return { ...base, status: "no-target", atRisk: false };
-  if (average === null) return { ...base, status: "no-grades", atRisk: false };
-
-  if (totalWeight !== null && totalWeight > doneWeight) {
-    const remainingWeight = totalWeight - doneWeight;
-    // pontos já acumulados (escala 0–10 ponderada) = média * pesoFeito.
-    const required = (target * totalWeight - average * doneWeight) / remainingWeight;
-    if (required <= 0.0001)
-      return { ...base, remainingWeight, requiredOnRemaining: 0, status: "guaranteed", atRisk: false };
-    if (required > 10.0001)
-      return { ...base, remainingWeight, requiredOnRemaining: required, status: "impossible", atRisk: true };
-    return { ...base, remainingWeight, requiredOnRemaining: required, status: "needs", atRisk: false };
-  }
-
-  // Sem peso total: compara a média atual com a meta (margem pequena de folga).
-  if (average + 0.05 >= target) return { ...base, status: "reached", atRisk: false };
-  return { ...base, status: "behind", atRisk: true };
+  semester: string
+): GradePointsGoal {
+  const accumulated = grades.reduce((a, g) => a + g.score, 0);
+  if (target === null)
+    return { semester, accumulated, target: null, remaining: null, reached: false, atRisk: false };
+  const remaining = Math.max(0, target - accumulated);
+  const reached = accumulated + 1e-9 >= target;
+  return { semester, accumulated, target, remaining, reached, atRisk: !reached };
 }
 
-export async function getGradesForUser() {
+/** Lista de semestres existentes nas notas (+ o atual), pro seletor. */
+export async function getGradeSemesters() {
+  const userId = getCurrentUserId();
+  const grades = live(await db().grades.where("userId").equals(userId).toArray());
+  const set = new Set<string>();
+  for (const g of grades) set.add(g.semester ?? "");
+  set.add(currentSemester());
+  return Array.from(set).sort((a, b) => {
+    if (a === "") return 1;
+    if (b === "") return -1;
+    return b.localeCompare(a);
+  });
+}
+
+export async function getGradesForUser(semester: string = ALL_SEMESTERS) {
   const userId = getCurrentUserId();
   const [gradesRaw, subjects] = await Promise.all([
     db().grades.where("userId").equals(userId).toArray(),
     userSubjects(userId),
   ]);
-  const grades = live(gradesRaw);
+  const grades = live(gradesRaw).filter((g) => inSemester(g, semester));
   grades.sort((a, b) => b.date - a.date);
   const subjMap = new Map(subjects.map((s) => [s.id, { id: s.id, name: s.name, color: s.color }]));
   return grades.map((g) => gradeToView(g, subjMap));
 }
 export type GradeView = ReturnType<typeof gradeToView>;
 
-export async function getGradesForSubject(subjectId: string) {
+export async function getGradesForSubject(subjectId: string, semester: string = ALL_SEMESTERS) {
   const userId = getCurrentUserId();
   const subject = await db().subjects.get(subjectId);
-  if (!subject || subject.userId !== userId) return { grades: [], average: null };
-  const grades = live(await db().grades.where("subjectId").equals(subjectId).toArray());
+  if (!subject || subject.userId !== userId)
+    return { grades: [], average: null, semester, pointsGoal: null };
+  const all = live(await db().grades.where("subjectId").equals(subjectId).toArray());
+  const grades = all.filter((g) => inSemester(g, semester));
   grades.sort((a, b) => b.date - a.date);
   const subjMap = new Map([[subject.id, { id: subject.id, name: subject.name, color: subject.color }]]);
-  const target = subject.gradeTarget ?? null;
-  const totalWeight = subject.gradeTotalWeight ?? null;
   return {
     grades: grades.map((g) => gradeToView(g, subjMap)),
     average: weightedAverage(grades),
-    target,
-    totalWeight,
-    projection: gradeProjection(grades, target, totalWeight),
+    semester,
+    pointsGoal: pointsGoal(grades, goalForSemester(subject, semester), semester),
   };
 }
 
-export async function getGradesSummary() {
+export async function getGradesSummary(semester: string = ALL_SEMESTERS) {
   const userId = getCurrentUserId();
   const [gradesRaw, subjects] = await Promise.all([
     db().grades.where("userId").equals(userId).toArray(),
     userSubjects(userId),
   ]);
-  const grades = live(gradesRaw);
+  const grades = live(gradesRaw).filter((g) => inSemester(g, semester));
   const subjMap = new Map(subjects.map((s) => [s.id, { id: s.id, name: s.name, color: s.color }]));
 
   const subjFull = new Map(subjects.map((s) => [s.id, s]));
@@ -527,19 +545,18 @@ export async function getGradesSummary() {
     .map(([sid, gs]) => {
       const s = subjMap.get(sid)!;
       const full = subjFull.get(sid);
-      const proj = gradeProjection(
-        gs,
-        full?.gradeTarget ?? null,
-        full?.gradeTotalWeight ?? null
-      );
+      const goal = pointsGoal(gs, goalForSemester(full ?? {}, semester), semester);
       return {
         id: s.id,
         name: s.name,
         color: s.color,
         count: gs.length,
         average: weightedAverage(gs),
-        target: proj.target,
-        atRisk: proj.atRisk,
+        target: goal.target,
+        accumulated: goal.accumulated,
+        remaining: goal.remaining,
+        reached: goal.reached,
+        atRisk: goal.atRisk,
       };
     })
     .sort((a, b) => {
@@ -612,7 +629,7 @@ export async function getDashboardData() {
   const heatmapSessions = allSessions.filter((s) => s.startedAt >= heatmapStart);
 
   const subjectsView = activeSubjects.slice(0, 6).map((s) => {
-    const ss = allSessions.filter((x) => x.subjectId === s.id);
+    const ss = allSessions.filter((x) => sessionSubjects(x).includes(s.id));
     return {
       id: s.id,
       name: s.name,
@@ -762,8 +779,13 @@ export async function getStatsForPeriod(periodDays: number) {
 
   const subjectAgg = new Map<string, number>();
   sessions.forEach((s) => {
-    const k = s.subjectId ?? "_none";
-    subjectAgg.set(k, (subjectAgg.get(k) ?? 0) + s.durationSeconds);
+    const subs = sessionSubjects(s);
+    if (subs.length === 0) {
+      subjectAgg.set("_none", (subjectAgg.get("_none") ?? 0) + s.durationSeconds);
+    } else {
+      for (const k of subs)
+        subjectAgg.set(k, (subjectAgg.get(k) ?? 0) + s.durationSeconds);
+    }
   });
   const bySubject = Array.from(subjectAgg.entries())
     .map(([sid, secs]) => {
