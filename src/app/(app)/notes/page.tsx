@@ -8,6 +8,7 @@ import { PageLoading } from "@/components/layout/page-loading";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { GradeForm } from "@/components/grades/grade-form";
 import { GradeRow } from "@/components/grades/grade-row";
+import { MoveSemesterForm } from "@/components/grades/move-semester-form";
 import { SubjectAverageCard } from "@/components/grades/subject-average-card";
 import { gradeColorByPercent } from "@/components/grades/grade-styles";
 import { cn } from "@/lib/utils";
@@ -92,6 +93,8 @@ export default function NotesPage() {
             </select>
           </div>
         </div>
+
+        <MoveSemesterForm semesters={semesters} defaultFrom={semester} />
 
         {grades.length === 0 ? (
           <Card>

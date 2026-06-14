@@ -4,6 +4,7 @@ import { cuid, db } from "@/lib/db";
 import { writeAdd, writeDelete, writeUpdate } from "@/lib/db/write";
 import { getCurrentUserId } from "@/lib/auth";
 import { invalidateAll } from "@/lib/db/use-repo";
+import { scheduleSync } from "@/lib/sync/engine";
 import { dateInputToMs } from "@/lib/utils";
 
 export type GradeType = "exam" | "assignment" | "quiz" | "other";
@@ -94,6 +95,30 @@ export async function updateGrade(input: UpdateGradeInput) {
   });
   invalidateAll();
   return { ok: true as const };
+}
+
+/**
+ * Move EM MASSA todas as notas de um semestre pra outro. `from === ""` move as
+ * notas sem semestre definido. `to` vazio joga de volta pra "sem semestre".
+ * Atalho pra organizar rápido (ex.: jogar tudo "sem semestre" pro semestre atual).
+ */
+export async function bulkMoveSemester(from: string, to: string) {
+  const userId = getCurrentUserId();
+  const target = to.trim() || null;
+  const all = await db().grades.where("userId").equals(userId).toArray();
+  const ids = all
+    .filter((g) => (g.semester ?? "") === from && g.trashedAt == null)
+    .map((g) => g.id);
+  if (ids.length === 0) return { ok: true as const, count: 0 };
+
+  const now = Date.now();
+  await db()
+    .grades.where("id")
+    .anyOf(ids)
+    .modify({ semester: target, updatedAt: now, _dirty: 1 });
+  scheduleSync();
+  invalidateAll();
+  return { ok: true as const, count: ids.length };
 }
 
 export async function deleteGrade(id: string) {
