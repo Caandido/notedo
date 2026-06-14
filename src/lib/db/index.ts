@@ -15,6 +15,7 @@ import {
   type LocalUser,
   type LousaRow,
   type MindMapRow,
+  type MindmapShareRow,
   type NoteRow,
   type ReviewRow,
   type StudySessionRow,
@@ -43,6 +44,7 @@ class NotedoDB extends Dexie {
   _sync_state!: Table<SyncStateRow, string>;
   _tombstones!: Table<TombstoneRow, string>;
   _blobs!: Table<BlobRow, string>;
+  _mindmapShares!: Table<MindmapShareRow, string>;
 
   constructor() {
     super("notedo");
@@ -122,6 +124,11 @@ class NotedoDB extends Dexie {
     // v7: lousa / quadro livre (sincronizável).
     this.version(7).stores({
       canvases: "id, userId, [userId+updatedAt], updatedAt, _dirty",
+    });
+
+    // v8: mapas compartilhados COMIGO (local, não sincroniza pelo motor).
+    this.version(8).stores({
+      _mindmapShares: "mapId",
     });
   }
 }

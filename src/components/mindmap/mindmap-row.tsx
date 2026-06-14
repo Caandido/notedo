@@ -2,10 +2,11 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { FileImage, Network, Trash2 } from "lucide-react";
+import { FileImage, LogOut, Network, Trash2, Users } from "lucide-react";
 
 import { Card } from "@/components/ui/card";
 import { deleteMindMap } from "@/features/mindmaps/actions";
+import { leaveMindmap } from "@/features/mindmaps/collab";
 import type { MindMapListItem } from "@/lib/queries";
 
 function relativeTime(ms: number): string {
@@ -25,6 +26,12 @@ export function MindMapRowItem({ map }: { map: MindMapListItem }) {
   async function remove(e: React.MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
+    if (map.shared) {
+      if (!confirm(`Sair do mapa compartilhado "${map.title}"?`)) return;
+      setDeleting(true);
+      await leaveMindmap(map.id);
+      return;
+    }
     if (!confirm(`Excluir o mapa "${map.title}"? Os slides serão removidos.`))
       return;
     setDeleting(true);
@@ -38,7 +45,15 @@ export function MindMapRowItem({ map }: { map: MindMapListItem }) {
           <Network className="size-4 text-[var(--color-muted-foreground)]" />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium">{map.title}</p>
+          <p className="flex items-center gap-1.5 truncate text-sm font-medium">
+            {map.title}
+            {(map.shared || map.sharedByMe) && (
+              <Users
+                className="size-3 shrink-0 text-[var(--color-muted-foreground)]"
+                aria-label={map.shared ? "Compartilhado comigo" : "Compartilhado por mim"}
+              />
+            )}
+          </p>
           <p className="flex items-center gap-2 text-xs text-[var(--color-muted-foreground)]">
             <span>{map.nodeCount} nó{map.nodeCount === 1 ? "" : "s"}</span>
             {map.slideCount > 0 && (
@@ -48,16 +63,17 @@ export function MindMapRowItem({ map }: { map: MindMapListItem }) {
               </span>
             )}
             <span>· {relativeTime(map.updatedAt)}</span>
+            {map.shared && <span>· compartilhado</span>}
           </p>
         </div>
         <button
           type="button"
           onClick={remove}
           disabled={deleting}
-          aria-label="Excluir mapa"
+          aria-label={map.shared ? "Sair do mapa" : "Excluir mapa"}
           className="shrink-0 rounded-md p-2 text-[var(--color-muted-foreground)] transition-colors hover:bg-[var(--color-background)] hover:text-rose-300 disabled:opacity-50"
         >
-          <Trash2 className="size-4" />
+          {map.shared ? <LogOut className="size-4" /> : <Trash2 className="size-4" />}
         </button>
       </Card>
     </Link>

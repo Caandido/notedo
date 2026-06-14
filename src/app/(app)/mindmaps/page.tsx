@@ -6,6 +6,7 @@ import { Header } from "@/components/layout/header";
 import { PageLoading } from "@/components/layout/page-loading";
 import { Card, CardContent } from "@/components/ui/card";
 import { NewMindMapForm } from "@/components/mindmap/new-mindmap-form";
+import { JoinMindMapForm } from "@/components/mindmap/join-mindmap-form";
 import { MindMapRowItem } from "@/components/mindmap/mindmap-row";
 import { useRepoQuery } from "@/lib/db/use-repo";
 import { getMindMapsForUser } from "@/lib/queries";
@@ -25,7 +26,10 @@ export default function MindMapsPage() {
         }`}
       />
       <div className="space-y-4 p-6">
-        <NewMindMapForm />
+        <div className="flex flex-wrap gap-2">
+          <NewMindMapForm />
+          <JoinMindMapForm />
+        </div>
 
         {maps.length === 0 ? (
           <Card>

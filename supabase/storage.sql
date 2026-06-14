@@ -57,3 +57,54 @@ create policy mindmap_slides_delete on storage.objects for delete
     bucket_id = 'mindmap-slides'
     and (storage.foldername(name))[1] = (select auth.uid())::text
   );
+
+-- ─────────────────────────────────────────────────────────────────────────
+-- Colaboração: quem tem acesso ao mapa (dono OU colaborador) também acessa os
+-- slides dele. A 2ª pasta do caminho (<user>/<map>/<node>.png) é o map_id.
+-- Idempotente. Combina com as políticas acima por OR.
+-- ─────────────────────────────────────────────────────────────────────────
+drop policy if exists mindmap_slides_collab_select on storage.objects;
+drop policy if exists mindmap_slides_collab_insert on storage.objects;
+drop policy if exists mindmap_slides_collab_update on storage.objects;
+
+create policy mindmap_slides_collab_select on storage.objects for select
+  using (
+    bucket_id = 'mindmap-slides'
+    and exists (
+      select 1 from public.mindmaps m
+      where m.id = (storage.foldername(name))[2]
+        and (
+          m.user_id = (select auth.uid())
+          or exists (select 1 from public.mindmap_collaborators c
+                     where c.mindmap_id = m.id and c.user_id = (select auth.uid()))
+        )
+    )
+  );
+
+create policy mindmap_slides_collab_insert on storage.objects for insert
+  with check (
+    bucket_id = 'mindmap-slides'
+    and exists (
+      select 1 from public.mindmaps m
+      where m.id = (storage.foldername(name))[2]
+        and (
+          m.user_id = (select auth.uid())
+          or exists (select 1 from public.mindmap_collaborators c
+                     where c.mindmap_id = m.id and c.user_id = (select auth.uid()))
+        )
+    )
+  );
+
+create policy mindmap_slides_collab_update on storage.objects for update
+  using (
+    bucket_id = 'mindmap-slides'
+    and exists (
+      select 1 from public.mindmaps m
+      where m.id = (storage.foldername(name))[2]
+        and (
+          m.user_id = (select auth.uid())
+          or exists (select 1 from public.mindmap_collaborators c
+                     where c.mindmap_id = m.id and c.user_id = (select auth.uid()))
+        )
+    )
+  );

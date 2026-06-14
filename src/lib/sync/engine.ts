@@ -4,6 +4,7 @@ import type { Table } from "dexie";
 
 import { db } from "@/lib/db";
 import { invalidateAll } from "@/lib/db/use-repo";
+import { getCurrentUserId } from "@/lib/auth";
 import { supabase, hasSupabaseConfig } from "./client";
 import { uploadPendingBlobs } from "./storage";
 import { getWatermark, setWatermark } from "./watermark";
@@ -173,6 +174,66 @@ async function pullTable(desc: TableDesc): Promise<void> {
   }
 }
 
+/**
+ * Puxa os mapas mentais compartilhados COMIGO (de que sou colaborador, não dono).
+ * O pull normal só varre por watermark; um mapa antigo recém-compartilhado pode
+ * ter updated_at abaixo do watermark e nunca chegar — então buscamos por id.
+ * Também reconcilia a tabela local `_mindmapShares` (usada pra listar esses
+ * mapas junto dos meus). Silencioso se o SQL de colaboração ainda não rodou.
+ */
+async function pullSharedMindmaps(): Promise<void> {
+  const desc = byLocal.get("mindmaps");
+  if (!desc || unsupportedTables.has("mindmaps")) return;
+  try {
+    const userId = getCurrentUserId();
+    const { data: collabs, error: cErr } = await supabase()
+      .from("mindmap_collaborators")
+      .select("mindmap_id, role")
+      .eq("user_id", userId);
+    if (cErr) return; // tabela/feature ainda não existe no servidor
+    const shareIds = (collabs ?? []).map((c) => c.mindmap_id as string);
+
+    const existing = await db()._mindmapShares.toArray();
+    const prev = new Map(existing.map((s) => [s.mapId, s]));
+    const stale = existing.filter((s) => !shareIds.includes(s.mapId)).map((s) => s.mapId);
+    if (stale.length) await db()._mindmapShares.bulkDelete(stale);
+    for (const c of collabs ?? []) {
+      const mapId = c.mindmap_id as string;
+      await db()._mindmapShares.put({
+        mapId,
+        role: (c.role as string) ?? "editor",
+        ownerName: prev.get(mapId)?.ownerName ?? null,
+        joinedAt: prev.get(mapId)?.joinedAt ?? Date.now(),
+      });
+    }
+    if (!shareIds.length) return;
+
+    const { data: maps, error: mErr } = await supabase()
+      .from(desc.remote)
+      .select("*")
+      .in("id", shareIds);
+    if (mErr || !maps) return;
+    await db().transaction("rw", ref("mindmaps"), async () => {
+      for (const rr of maps as Record<string, unknown>[]) {
+        const id = rr.id as string;
+        const incoming = new Date(rr.updated_at as string).getTime();
+        const local = (await ref("mindmaps").get(id)) as
+          | { _dirty?: 0 | 1; updatedAt?: number }
+          | undefined;
+        if (local && local._dirty && (local.updatedAt ?? 0) >= incoming) continue;
+        if (local && (local.updatedAt ?? 0) > incoming) continue;
+        if (rr.deleted_at) {
+          if (local) await ref("mindmaps").delete(id);
+        } else {
+          await ref("mindmaps").put({ ...fromRemote(desc, rr), _dirty: 0 });
+        }
+      }
+    });
+  } catch {
+    // silencioso: colaboração é best-effort, não pode quebrar o resto do sync
+  }
+}
+
 // ─── Orquestração ──────────────────────────────────────────────────────────
 
 /**
@@ -206,6 +267,7 @@ export async function syncAll(reason = "manual"): Promise<void> {
     await uploadPendingBlobs(); // slides antes da estrutura que os referencia
     for (const d of TABLE_DESCRIPTORS) await pushTable(d);
     for (const d of TABLE_DESCRIPTORS) await pullTable(d);
+    await pullSharedMindmaps();
     invalidateAll();
   } catch (err) {
     console.warn(`[sync] falhou (${reason}):`, err);

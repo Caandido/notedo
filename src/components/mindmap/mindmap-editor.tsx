@@ -24,9 +24,10 @@ import {
   type OnEdgesChange,
   type OnNodesChange,
 } from "@xyflow/react";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft, Loader2, Users } from "lucide-react";
 
-import { cuid } from "@/lib/db";
+import { cuid, db } from "@/lib/db";
+import { getCurrentUserId } from "@/lib/auth";
 import { getMindMap } from "@/lib/queries";
 import {
   importSlidesIntoMap,
@@ -36,6 +37,9 @@ import {
 import type { MindMapData, MindMapNode, MindMapShape } from "@/lib/db/schema";
 import { Button } from "@/components/ui/button";
 import { MindMapCtx } from "./editor-context";
+import { useMindmapCollab } from "./use-collab";
+import { RemoteCursors } from "./remote-cursors";
+import { ShareDialog } from "./share-dialog";
 import { TextNode } from "./text-node";
 import { SlideNode } from "./slide-node";
 import { RichNode } from "./rich-node";
@@ -168,6 +172,25 @@ function Flow({ id }: { id: string }) {
   const [penWidth, setPenWidth] = React.useState(4);
   const dirty = React.useRef(false);
 
+  // colaboração
+  const selfId = React.useMemo(() => getCurrentUserId(), []);
+  const [selfName, setSelfName] = React.useState("Você");
+  const [isOwner, setIsOwner] = React.useState(true);
+  const [shareToken, setShareToken] = React.useState<string | null>(null);
+  const [shareOpen, setShareOpen] = React.useState(false);
+  const dragging = React.useRef(false);
+  const pendingRemote = React.useRef<MindMapData | null>(null);
+  const shareEnabled = !isOwner || Boolean(shareToken);
+
+  React.useEffect(() => {
+    void db()
+      .users.get(selfId)
+      .then((u) => {
+        if (u?.name) setSelfName(u.name);
+      })
+      .catch(() => {});
+  }, [selfId]);
+
   React.useEffect(() => {
     let active = true;
     void getMindMap(id).then((m) => {
@@ -178,6 +201,8 @@ function Flow({ id }: { id: string }) {
         return;
       }
       setTitle(m.title);
+      setIsOwner(m.userId === selfId);
+      setShareToken(m.shareToken ?? null);
       setNodes(toRFNodes(m.data));
       setEdges(toRFEdges(m.data));
       setLoaded(true);
@@ -185,7 +210,38 @@ function Flow({ id }: { id: string }) {
     return () => {
       active = false;
     };
-  }, [id, setNodes, setEdges]);
+  }, [id, selfId, setNodes, setEdges]);
+
+  // Aplica uma estrutura recebida ao vivo de outro colaborador. NÃO marca dirty
+  // (não re-salva nem re-transmite — evita eco). Se estou arrastando, adia.
+  const applyRemote = React.useCallback(
+    (data: MindMapData) => {
+      if (dragging.current) {
+        pendingRemote.current = data;
+        return;
+      }
+      setNodes(toRFNodes(data));
+      setEdges(toRFEdges(data));
+    },
+    [setNodes, setEdges]
+  );
+
+  const { peers, sendCursor, sendDoc } = useMindmapCollab({
+    mapId: id,
+    enabled: shareEnabled && loaded && !missing,
+    selfId,
+    selfName,
+    onRemoteDoc: applyRemote,
+  });
+
+  // Transmite a estrutura ao vivo quando EU edito (dirty), separado do autosave.
+  React.useEffect(() => {
+    if (!loaded || !shareEnabled || !dirty.current) return;
+    const t = setTimeout(() => {
+      sendDoc(serialize(nodes, edges));
+    }, 250);
+    return () => clearTimeout(t);
+  }, [nodes, edges, loaded, shareEnabled, sendDoc]);
 
   // autosave (debounced)
   React.useEffect(() => {
@@ -411,6 +467,28 @@ function Flow({ id }: { id: string }) {
     [setNodes]
   );
 
+  /* ---------- colaboração: drag + cursor ---------- */
+  const onNodeDragStart = React.useCallback(() => {
+    dragging.current = true;
+  }, []);
+  const onNodeDragStop = React.useCallback(() => {
+    dragging.current = false;
+    if (pendingRemote.current) {
+      const d = pendingRemote.current;
+      pendingRemote.current = null;
+      setNodes(toRFNodes(d));
+      setEdges(toRFEdges(d));
+    }
+  }, [setNodes, setEdges]);
+  const onCanvasMouseMove = React.useCallback(
+    (e: React.MouseEvent) => {
+      if (!shareEnabled) return;
+      const p = screenToFlowPosition({ x: e.clientX, y: e.clientY });
+      sendCursor(p.x, p.y);
+    },
+    [shareEnabled, screenToFlowPosition, sendCursor]
+  );
+
   const flush = React.useCallback(async () => {
     dirty.current = false;
     await saveMindMapData(id, serialize(nodes, edges));
@@ -475,12 +553,34 @@ function Flow({ id }: { id: string }) {
             placeholder="Título do mapa"
             className="h-8 min-w-0 flex-1 rounded-md bg-transparent px-2 text-sm font-medium outline-none focus:bg-[var(--color-background)]"
           />
-          <span className="hidden text-xs text-[var(--color-muted-foreground)] sm:inline">
-            arraste das bolinhas pra conectar · Del apaga
-          </span>
+          {shareEnabled && peers.length > 0 && (
+            <div className="flex -space-x-1.5">
+              {peers.slice(0, 5).map((p) => (
+                <span
+                  key={p.id}
+                  title={p.name}
+                  className="flex size-6 items-center justify-center rounded-full border-2 border-[var(--color-card)] text-[10px] font-semibold text-white"
+                  style={{ backgroundColor: p.color }}
+                >
+                  {p.name.slice(0, 1).toUpperCase()}
+                </span>
+              ))}
+            </div>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            onClick={() => setShareOpen(true)}
+          >
+            <Users className="size-3.5" />
+            <span className="hidden sm:inline">
+              {isOwner ? (shareToken ? "Compartilhado" : "Compartilhar") : "Colaborando"}
+            </span>
+          </Button>
         </div>
 
-        <div className="relative min-h-0 flex-1">
+        <div className="relative min-h-0 flex-1" onMouseMove={onCanvasMouseMove}>
           {!loaded ? (
             <div className="flex size-full items-center justify-center">
               <Loader2 className="size-6 animate-spin text-[var(--color-muted-foreground)]" />
@@ -502,6 +602,8 @@ function Flow({ id }: { id: string }) {
                 onEdgesChange={handleEdgesChange}
                 onConnect={onConnect}
                 onPaneClick={onPaneClick}
+                onNodeDragStart={onNodeDragStart}
+                onNodeDragStop={onNodeDragStop}
                 colorMode={resolvedTheme === "dark" ? "dark" : "light"}
                 fitView
                 minZoom={0.1}
@@ -519,6 +621,7 @@ function Flow({ id }: { id: string }) {
                 <Background variant={BackgroundVariant.Dots} gap={22} size={1.6} />
                 <Controls />
                 <MiniMap pannable zoomable />
+                {shareEnabled && <RemoteCursors peers={peers} />}
               </ReactFlow>
 
               <MindMapToolbar
@@ -569,6 +672,16 @@ function Flow({ id }: { id: string }) {
         onClose={() => setImportOpen(false)}
         onImported={() => void reloadFromDb()}
       />
+
+      {shareOpen && (
+        <ShareDialog
+          mapId={id}
+          isOwner={isOwner}
+          initialToken={shareToken}
+          onClose={() => setShareOpen(false)}
+          onShared={(t) => setShareToken(t)}
+        />
+      )}
     </MindMapCtx.Provider>
   );
 }

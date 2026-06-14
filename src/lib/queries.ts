@@ -417,6 +417,65 @@ function weightedAverage(grades: { score: number; maxScore: number; weight: numb
   return grades.reduce((a, g) => a + (g.score / g.maxScore) * 10 * g.weight, 0) / tw;
 }
 
+/**
+ * Projeção da meta de nota de uma matéria.
+ * - `needs`: com peso total informado, devolve a média (0–10) necessária no peso
+ *   restante pra bater a meta.
+ * - `guaranteed`/`impossible`: meta já garantida / inatingível mesmo tirando 10.
+ * - sem peso total: só compara a média atual com a meta (`reached`/`behind`).
+ */
+export type GradeProjection = {
+  average: number | null;
+  target: number | null;
+  totalWeight: number | null;
+  doneWeight: number;
+  remainingWeight: number | null;
+  requiredOnRemaining: number | null;
+  status:
+    | "no-target"
+    | "no-grades"
+    | "reached"
+    | "behind"
+    | "needs"
+    | "guaranteed"
+    | "impossible";
+  atRisk: boolean;
+};
+
+function gradeProjection(
+  grades: { score: number; maxScore: number; weight: number }[],
+  target: number | null,
+  totalWeight: number | null
+): GradeProjection {
+  const average = weightedAverage(grades);
+  const doneWeight = grades.reduce((a, g) => a + g.weight, 0);
+  const base = {
+    average,
+    target,
+    totalWeight,
+    doneWeight,
+    remainingWeight: null as number | null,
+    requiredOnRemaining: null as number | null,
+  };
+  if (target === null) return { ...base, status: "no-target", atRisk: false };
+  if (average === null) return { ...base, status: "no-grades", atRisk: false };
+
+  if (totalWeight !== null && totalWeight > doneWeight) {
+    const remainingWeight = totalWeight - doneWeight;
+    // pontos já acumulados (escala 0–10 ponderada) = média * pesoFeito.
+    const required = (target * totalWeight - average * doneWeight) / remainingWeight;
+    if (required <= 0.0001)
+      return { ...base, remainingWeight, requiredOnRemaining: 0, status: "guaranteed", atRisk: false };
+    if (required > 10.0001)
+      return { ...base, remainingWeight, requiredOnRemaining: required, status: "impossible", atRisk: true };
+    return { ...base, remainingWeight, requiredOnRemaining: required, status: "needs", atRisk: false };
+  }
+
+  // Sem peso total: compara a média atual com a meta (margem pequena de folga).
+  if (average + 0.05 >= target) return { ...base, status: "reached", atRisk: false };
+  return { ...base, status: "behind", atRisk: true };
+}
+
 export async function getGradesForUser() {
   const userId = getCurrentUserId();
   const [gradesRaw, subjects] = await Promise.all([
@@ -437,9 +496,14 @@ export async function getGradesForSubject(subjectId: string) {
   const grades = live(await db().grades.where("subjectId").equals(subjectId).toArray());
   grades.sort((a, b) => b.date - a.date);
   const subjMap = new Map([[subject.id, { id: subject.id, name: subject.name, color: subject.color }]]);
+  const target = subject.gradeTarget ?? null;
+  const totalWeight = subject.gradeTotalWeight ?? null;
   return {
     grades: grades.map((g) => gradeToView(g, subjMap)),
     average: weightedAverage(grades),
+    target,
+    totalWeight,
+    projection: gradeProjection(grades, target, totalWeight),
   };
 }
 
@@ -452,6 +516,7 @@ export async function getGradesSummary() {
   const grades = live(gradesRaw);
   const subjMap = new Map(subjects.map((s) => [s.id, { id: s.id, name: s.name, color: s.color }]));
 
+  const subjFull = new Map(subjects.map((s) => [s.id, s]));
   const byMap = new Map<string, GradeRow[]>();
   for (const s of subjects.filter((s) => !s.archived)) byMap.set(s.id, []);
   for (const g of grades) {
@@ -461,12 +526,20 @@ export async function getGradesSummary() {
   const bySubject = Array.from(byMap.entries())
     .map(([sid, gs]) => {
       const s = subjMap.get(sid)!;
+      const full = subjFull.get(sid);
+      const proj = gradeProjection(
+        gs,
+        full?.gradeTarget ?? null,
+        full?.gradeTotalWeight ?? null
+      );
       return {
         id: s.id,
         name: s.name,
         color: s.color,
         count: gs.length,
         average: weightedAverage(gs),
+        target: proj.target,
+        atRisk: proj.atRisk,
       };
     })
     .sort((a, b) => {
@@ -890,7 +963,21 @@ export type StudySessionView = StudySessionRow;
 
 export async function getMindMapsForUser() {
   const userId = getCurrentUserId();
-  const maps = live(await db().mindmaps.where("userId").equals(userId).toArray());
+  const [mineRaw, shares] = await Promise.all([
+    db().mindmaps.where("userId").equals(userId).toArray(),
+    db()._mindmapShares.toArray(),
+  ]);
+  // Mapas compartilhados comigo (dono é outra pessoa) — buscados por id.
+  const shareIds = shares.map((s) => s.mapId);
+  const sharedRaw = shareIds.length
+    ? (await db().mindmaps.bulkGet(shareIds)).filter(
+        (m): m is NonNullable<typeof m> => Boolean(m)
+      )
+    : [];
+  const byId = new Map(mineRaw.map((m) => [m.id, m]));
+  for (const m of sharedRaw) if (!byId.has(m.id)) byId.set(m.id, m);
+
+  const maps = live(Array.from(byId.values()));
   maps.sort((a, b) => b.updatedAt - a.updatedAt);
   return maps.map((m) => {
     const nodes = m.data?.nodes ?? [];
@@ -901,6 +988,8 @@ export async function getMindMapsForUser() {
       nodeCount: nodes.length,
       slideCount: nodes.filter((n) => n.kind === "slide").length,
       updatedAt: m.updatedAt,
+      shared: m.userId !== userId,
+      sharedByMe: m.userId === userId && Boolean(m.shareToken),
     };
   });
 }
@@ -911,8 +1000,11 @@ export type MindMapListItem = Awaited<
 export async function getMindMap(id: string) {
   const userId = getCurrentUserId();
   const map = await db().mindmaps.get(id);
-  if (!map || map.userId !== userId) return null;
-  return map;
+  if (!map) return null;
+  if (map.userId === userId) return map;
+  // Mapa compartilhado comigo: liberado se houver associação local.
+  const share = await db()._mindmapShares.get(id);
+  return share ? map : null;
 }
 
 // ─── Atividades / redações ───────────────────────────────────────────────────

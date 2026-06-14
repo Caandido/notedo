@@ -98,3 +98,36 @@ export async function updateSubject(input: UpdateSubjectInput) {
   invalidateAll();
   return { ok: true as const };
 }
+
+/**
+ * Define (ou limpa) a meta de nota da matéria: média alvo na escala 0–10 e,
+ * opcionalmente, o peso total do período (soma dos pesos de todas as avaliações).
+ * Passe `null` em qualquer campo pra limpar.
+ */
+export async function setSubjectGradeGoal(input: {
+  id: string;
+  target: number | null;
+  totalWeight: number | null;
+}) {
+  const userId = getCurrentUserId();
+  const subject = await db().subjects.get(input.id);
+  if (!subject || subject.userId !== userId)
+    return { ok: false as const, error: "Matéria não encontrada." };
+  if (
+    input.target !== null &&
+    (!Number.isFinite(input.target) || input.target < 0 || input.target > 10)
+  )
+    return { ok: false as const, error: "Meta deve ser entre 0 e 10." };
+  if (
+    input.totalWeight !== null &&
+    (!Number.isFinite(input.totalWeight) || input.totalWeight <= 0)
+  )
+    return { ok: false as const, error: "Peso total inválido." };
+
+  await writeUpdate("subjects", input.id, {
+    gradeTarget: input.target,
+    gradeTotalWeight: input.totalWeight,
+  });
+  invalidateAll();
+  return { ok: true as const };
+}

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AlertTriangle } from "lucide-react";
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -12,6 +13,8 @@ interface SubjectAverageCardProps {
     color: string;
     count: number;
     average: number | null;
+    target?: number | null;
+    atRisk?: boolean;
   };
 }
 
@@ -19,6 +22,7 @@ export function SubjectAverageCard({ subject }: SubjectAverageCardProps) {
   const avg = subject.average;
   const hasGrades = subject.count > 0 && avg !== null;
   const percent = hasGrades ? (avg / 10) * 100 : 0;
+  const hasTarget = subject.target !== null && subject.target !== undefined;
 
   return (
     <Link href={`/subject?id=${subject.id}`} className="block">
@@ -32,16 +36,21 @@ export function SubjectAverageCard({ subject }: SubjectAverageCardProps) {
               />
               <h3 className="truncate text-sm font-semibold">{subject.name}</h3>
             </div>
-            {hasGrades && (
-              <span
-                className={cn(
-                  "shrink-0 font-mono text-lg font-semibold tabular-nums",
-                  gradeColorByPercent(percent)
-                )}
-              >
-                {avg!.toFixed(1)}
-              </span>
-            )}
+            <div className="flex shrink-0 items-center gap-1.5">
+              {subject.atRisk && (
+                <AlertTriangle className="size-3.5 text-rose-400" />
+              )}
+              {hasGrades && (
+                <span
+                  className={cn(
+                    "font-mono text-lg font-semibold tabular-nums",
+                    gradeColorByPercent(percent)
+                  )}
+                >
+                  {avg!.toFixed(1)}
+                </span>
+              )}
+            </div>
           </div>
 
           {hasGrades ? (
@@ -60,6 +69,7 @@ export function SubjectAverageCard({ subject }: SubjectAverageCardProps) {
               <p className="text-xs text-[var(--color-muted-foreground)]">
                 {subject.count} {subject.count === 1 ? "nota" : "notas"} ·
                 média ponderada / 10
+                {hasTarget && ` · meta ${subject.target!.toFixed(1)}`}
               </p>
             </>
           ) : (

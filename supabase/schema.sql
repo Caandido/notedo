@@ -241,6 +241,9 @@ alter table public.notes      add column if not exists trashed_at timestamptz;
 alter table public.canvases   add column if not exists trashed_at timestamptz;
 -- Cor própria por card (acento). Idempotente.
 alter table public.cards      add column if not exists color text;
+-- Meta de nota por matéria: média alvo (0–10) + peso total do período. Idempotente.
+alter table public.subjects   add column if not exists grade_target double precision;
+alter table public.subjects   add column if not exists grade_total_weight double precision;
 
 create index if not exists subjects_user_updated   on public.subjects   (user_id, updated_at);
 create index if not exists topics_user_updated      on public.topics     (user_id, updated_at);
@@ -311,3 +314,81 @@ begin
          for each row execute function public.lww_guard();', t);
   end loop;
 end $$;
+
+-- ─────────────────────────────────────────────────────────────────────────
+-- Colaboração em mapas mentais (compartilhar pra editar junto, estilo Canva).
+-- O dono ativa o compartilhamento (gera share_token); quem tem o código entra
+-- via RPC join_mindmap_by_token e vira colaborador. RLS do mapa passa a aceitar
+-- dono OU colaborador. Idempotente.
+-- ─────────────────────────────────────────────────────────────────────────
+alter table public.mindmaps add column if not exists share_token text;
+create unique index if not exists mindmaps_share_token
+  on public.mindmaps (share_token) where share_token is not null;
+
+create table if not exists public.mindmap_collaborators (
+  mindmap_id  text not null references public.mindmaps(id) on delete cascade,
+  user_id     uuid not null references auth.users(id) on delete cascade,
+  role        text not null default 'editor',
+  name        text,
+  joined_at   timestamptz not null default now(),
+  primary key (mindmap_id, user_id)
+);
+create index if not exists mindmap_collab_user on public.mindmap_collaborators (user_id);
+
+alter table public.mindmap_collaborators enable row level security;
+
+-- Quem pode VER as linhas de colaborador: o próprio colaborador e o dono do mapa.
+drop policy if exists collab_select on public.mindmap_collaborators;
+create policy collab_select on public.mindmap_collaborators for select
+  using (
+    user_id = (select auth.uid())
+    or exists (select 1 from public.mindmaps m
+               where m.id = mindmap_id and m.user_id = (select auth.uid()))
+  );
+-- O dono remove colaboradores; o colaborador pode sair (apagar a própria linha).
+drop policy if exists collab_owner_delete on public.mindmap_collaborators;
+create policy collab_owner_delete on public.mindmap_collaborators for delete
+  using (exists (select 1 from public.mindmaps m
+                 where m.id = mindmap_id and m.user_id = (select auth.uid())));
+drop policy if exists collab_self_delete on public.mindmap_collaborators;
+create policy collab_self_delete on public.mindmap_collaborators for delete
+  using (user_id = (select auth.uid()));
+-- (inserts acontecem só via RPC join_mindmap_by_token, security definer.)
+
+-- RLS do mapa: dono OU colaborador. Substitui own_rows só pra mindmaps.
+drop policy if exists own_rows on public.mindmaps;
+drop policy if exists mindmap_access on public.mindmaps;
+create policy mindmap_access on public.mindmaps for all
+  using (
+    user_id = (select auth.uid())
+    or exists (select 1 from public.mindmap_collaborators c
+               where c.mindmap_id = id and c.user_id = (select auth.uid()))
+  )
+  with check (
+    user_id = (select auth.uid())
+    or exists (select 1 from public.mindmap_collaborators c
+               where c.mindmap_id = id and c.user_id = (select auth.uid()))
+  );
+
+-- Entrar num mapa pelo código. SECURITY DEFINER: enxerga o mapa pelo token
+-- (ignora RLS) só pra inserir o solicitante como colaborador. Devolve id+título.
+create or replace function public.join_mindmap_by_token(p_token text, p_name text default null)
+returns table (mindmap_id text, title text)
+language plpgsql security definer set search_path = public as $$
+declare v_id text; v_title text; v_owner uuid;
+begin
+  select id, m.title, user_id into v_id, v_title, v_owner
+    from public.mindmaps m
+    where m.share_token = p_token and m.deleted_at is null and m.trashed_at is null;
+  if v_id is null then
+    raise exception 'Código inválido ou mapa indisponível.';
+  end if;
+  if v_owner <> auth.uid() then
+    insert into public.mindmap_collaborators (mindmap_id, user_id, name)
+      values (v_id, auth.uid(), p_name)
+      on conflict (mindmap_id, user_id)
+        do update set name = coalesce(excluded.name, public.mindmap_collaborators.name);
+  end if;
+  return query select v_id, v_title;
+end $$;
+grant execute on function public.join_mindmap_by_token(text, text) to authenticated;

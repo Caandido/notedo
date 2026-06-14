@@ -2,11 +2,12 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Check, Loader2, Pause, Play, RotateCcw, Save } from "lucide-react";
+import { Check, Loader2, Pause, Play, Plus, RotateCcw, Save } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { TimerDisplay } from "@/components/timer/timer-display";
+import { AddSessionDialog } from "@/components/timer/add-session-dialog";
 import { useTimerStore, type TimerMode } from "@/stores/timer-store";
 import { useInterval } from "@/hooks/use-interval";
 import { cn, formatDuration } from "@/lib/utils";
@@ -48,6 +49,7 @@ export function TimerPageContent({ subjects }: TimerPageContentProps) {
   );
   const [saveState, setSaveState] = React.useState<SaveState>("idle");
   const [saveError, setSaveError] = React.useState<string | null>(null);
+  const [addOpen, setAddOpen] = React.useState(false);
 
   React.useEffect(() => {
     if (running || elapsedSeconds > 0) return;
@@ -130,6 +132,16 @@ export function TimerPageContent({ subjects }: TimerPageContentProps) {
       <p className="text-xs text-[var(--color-muted-foreground)]">
         {MODES.find((m) => m.id === mode)?.hint}
       </p>
+
+      <Button
+        variant="ghost"
+        size="sm"
+        className="gap-1.5 text-xs text-[var(--color-muted-foreground)]"
+        onClick={() => setAddOpen(true)}
+      >
+        <Plus className="size-3.5" />
+        Adicionar sessão manual
+      </Button>
 
       <TimerDisplay seconds={displaySeconds} progress={progress} />
 
@@ -254,6 +266,14 @@ export function TimerPageContent({ subjects }: TimerPageContentProps) {
         <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
           Sessão concluída! Salve para registrar.
         </div>
+      )}
+
+      {addOpen && (
+        <AddSessionDialog
+          subjects={subjects}
+          defaultSubjectId={selectedSubject}
+          onClose={() => setAddOpen(false)}
+        />
       )}
     </div>
   );

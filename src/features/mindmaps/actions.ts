@@ -13,6 +13,19 @@ const EMPTY: MindMapData = { nodes: [], edges: [] };
 /** Larguras de exibição padrão de cada tipo de nó (px). */
 const SLIDE_W = 260;
 
+/**
+ * Pode editar o mapa? Dono, OU colaborador (mapa compartilhado comigo). Mapas
+ * compartilhados têm o userId do DONO; a associação fica em `_mindmapShares`.
+ */
+async function canEditMap(
+  map: { id: string; userId: string } | undefined,
+  userId: string
+): Promise<boolean> {
+  if (!map) return false;
+  if (map.userId === userId) return true;
+  return Boolean(await db()._mindmapShares.get(map.id));
+}
+
 export async function createMindMap(input: { title?: string; subjectId?: string | null }) {
   const title = (input.title ?? "").trim() || "Mapa sem título";
   if (title.length > 120) return { ok: false as const, error: "Título muito longo." };
@@ -39,7 +52,7 @@ export async function renameMindMap(id: string, title: string) {
   if (t.length > 120) return { ok: false as const, error: "Título muito longo." };
   const userId = getCurrentUserId();
   const map = await db().mindmaps.get(id);
-  if (!map || map.userId !== userId)
+  if (!(await canEditMap(map, userId)))
     return { ok: false as const, error: "Mapa não encontrado." };
   await writeUpdate("mindmaps", id, { title: t });
   invalidateAll();
@@ -50,7 +63,7 @@ export async function renameMindMap(id: string, title: string) {
 export async function saveMindMapData(id: string, data: MindMapData) {
   const userId = getCurrentUserId();
   const map = await db().mindmaps.get(id);
-  if (!map || map.userId !== userId)
+  if (!(await canEditMap(map, userId)))
     return { ok: false as const, error: "Mapa não encontrado." };
   await writeUpdate("mindmaps", id, { data });
   return { ok: true as const };
@@ -76,8 +89,9 @@ export async function deleteMindMap(id: string) {
 export async function importSlidesIntoMap(mapId: string, files: File[]) {
   const userId = getCurrentUserId();
   const map = await db().mindmaps.get(mapId);
-  if (!map || map.userId !== userId)
+  if (!(await canEditMap(map, userId)))
     return { ok: false as const, error: "Mapa não encontrado." };
+  if (!map) return { ok: false as const, error: "Mapa não encontrado." };
 
   let slides;
   try {

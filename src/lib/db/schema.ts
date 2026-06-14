@@ -33,6 +33,14 @@ export type SubjectRow = SyncMeta & {
   progress: number;
   tags: string[];
   archived: boolean;
+  /** Meta de nota (média alvo, escala 0–10). null = sem meta. */
+  gradeTarget?: number | null;
+  /**
+   * Peso total do período (soma dos pesos de TODAS as avaliações, inclusive as
+   * que ainda não foram lançadas). Com ele, o app calcula a média necessária no
+   * peso restante pra bater a meta. null = desconhecido (só compara média atual).
+   */
+  gradeTotalWeight?: number | null;
   createdAt: number;
 };
 
@@ -186,7 +194,25 @@ export type MindMapRow = SyncMeta & {
   subjectId: string | null;
   title: string;
   data: MindMapData;
+  /**
+   * Código de convite (token) pra colaboração. Quando preenchido, o mapa pode
+   * ser aberto por quem tiver o código (via RPC join_mindmap_by_token). null =
+   * não compartilhado. Só o dono define/limpa.
+   */
+  shareToken?: string | null;
   createdAt: number;
+};
+
+/**
+ * Registro LOCAL (não sincroniza pelo motor) de mapas compartilhados COMIGO —
+ * mapas cujo dono é outra pessoa e em que entrei como colaborador. Serve pra
+ * listá-los junto dos meus (a linha do mapa em si tem o userId do dono).
+ */
+export type MindmapShareRow = {
+  mapId: string;
+  role: string;
+  ownerName?: string | null;
+  joinedAt: number;
 };
 
 export type ActivityType =

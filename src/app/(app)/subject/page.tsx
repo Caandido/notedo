@@ -22,6 +22,7 @@ import { NewTopicForm } from "@/components/subjects/new-topic-form";
 import { EditSubjectForm } from "@/components/subjects/edit-subject-form";
 import { GradeForm } from "@/components/grades/grade-form";
 import { GradeRow } from "@/components/grades/grade-row";
+import { GradeGoal } from "@/components/grades/grade-goal";
 import { gradeColorByPercent } from "@/components/grades/grade-styles";
 import { cn, formatDuration, formatHours } from "@/lib/utils";
 import { useRepoQuery } from "@/lib/db/use-repo";
@@ -69,7 +70,14 @@ function SubjectDetailContent() {
   if (detailQ.loading || gradesQ.loading) return <PageLoading />;
   if (!detailQ.data) notFound();
   const detail = detailQ.data;
-  const gradesData = gradesQ.data ?? { grades: [], average: null };
+  const gradesData =
+    gradesQ.data ?? {
+      grades: [],
+      average: null,
+      target: null,
+      totalWeight: null,
+      projection: null,
+    };
 
   const { subject, topics, topicCount, totalSeconds, sessionCount, recentSessions } =
     detail;
@@ -209,6 +217,9 @@ function SubjectDetailContent() {
             )}
           </CardHeader>
           <CardContent className="space-y-3">
+            {gradesData.projection && (
+              <GradeGoal subjectId={subject.id} projection={gradesData.projection} />
+            )}
             <GradeForm subjects={subjectOption} defaultSubjectId={subject.id} />
             {gradesData.grades.length === 0 ? (
               <p className="text-sm text-[var(--color-muted-foreground)]">
