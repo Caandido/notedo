@@ -28,6 +28,7 @@ import { cn, formatDuration, formatHours } from "@/lib/utils";
 import { useRepoQuery } from "@/lib/db/use-repo";
 import { getGradesForSubject, getSubjectDetail } from "@/lib/queries";
 import {
+  ALL_SEMESTERS,
   currentSemester,
   getStoredSemester,
   semesterLabel,
@@ -69,10 +70,13 @@ export default function SubjectDetailPage() {
 function SubjectDetailContent() {
   const params = useSearchParams();
   const id = params.get("id") ?? "";
+  // Padrão = TODOS os semestres (não esconde notas antigas/sem semestre).
   const semester = React.useMemo(
-    () => getStoredSemester() ?? currentSemester(),
+    () => getStoredSemester() ?? ALL_SEMESTERS,
     []
   );
+  // Semestre concreto pra pré-preencher o formulário de nova nota.
+  const formSemester = semester === ALL_SEMESTERS ? currentSemester() : semester;
   const detailQ = useRepoQuery(() => getSubjectDetail(id), [id]);
   const gradesQ = useRepoQuery(
     () => getGradesForSubject(id, semester),
@@ -241,7 +245,7 @@ function SubjectDetailContent() {
             <GradeForm
               subjects={subjectOption}
               defaultSubjectId={subject.id}
-              defaultSemester={semester}
+              defaultSemester={formSemester}
             />
             {gradesData.grades.length === 0 ? (
               <p className="text-sm text-[var(--color-muted-foreground)]">

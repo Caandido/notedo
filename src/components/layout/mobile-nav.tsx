@@ -9,13 +9,11 @@ import {
   Calendar,
   ClipboardList,
   GraduationCap,
-  KanbanSquare,
   LayoutDashboard,
   LogOut,
   type LucideIcon,
   MoreHorizontal,
   Network,
-  NotebookPen,
   PencilRuler,
   Repeat,
   Settings,
@@ -39,12 +37,10 @@ const PRIMARY: Item[] = [
 ];
 
 const MORE: Item[] = [
-  { href: "/notepad", label: "Bloco de notas", icon: NotebookPen },
   { href: "/notes", label: "Notas", icon: GraduationCap },
   { href: "/mindmaps", label: "Mapas mentais", icon: Network },
   { href: "/lousa", label: "Lousa", icon: PencilRuler },
   { href: "/activities", label: "Atividades", icon: ClipboardList },
-  { href: "/projects", label: "Projetos", icon: KanbanSquare },
   { href: "/goals", label: "Metas", icon: Target },
   { href: "/reviews", label: "Revisões", icon: Repeat },
   { href: "/stats", label: "Estatísticas", icon: BarChart3 },
@@ -60,8 +56,6 @@ function isActive(pathname: string, href: string): boolean {
     return pathname.startsWith("/mindmaps") || pathname.startsWith("/mindmap");
   if (href === "/activities")
     return pathname.startsWith("/activities") || pathname.startsWith("/activity");
-  if (href === "/projects")
-    return pathname.startsWith("/projects") || pathname.startsWith("/card");
   return pathname.startsWith(href);
 }
 

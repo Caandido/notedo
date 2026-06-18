@@ -28,8 +28,11 @@ import {
 } from "@/lib/semester";
 
 export default function NotesPage() {
+  // Padrão = TODOS os semestres, pra nunca esconder notas antigas (sem semestre)
+  // nem as que vieram de outro device sem o campo ainda. O usuário filtra quando
+  // quiser; a escolha fica guardada.
   const [semester, setSemester] = React.useState<string>(
-    () => getStoredSemester() ?? currentSemester()
+    () => getStoredSemester() ?? ALL_SEMESTERS
   );
 
   const semestersQ = useRepoQuery(() => getGradeSemesters(), []);
