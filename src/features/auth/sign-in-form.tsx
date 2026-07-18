@@ -203,6 +203,8 @@ export function SignInForm() {
 
 function friendly(err: unknown): string {
   const m = err instanceof Error ? err.message : String(err);
+  if (/Failed to fetch|NetworkError|Load failed|fetch failed/i.test(m))
+    return "Servidor temporariamente inativo. Tente novamente em alguns minutos.";
   if (/Invalid login credentials/i.test(m)) return "E-mail ou senha inválidos.";
   if (/Email not confirmed/i.test(m))
     return "E-mail ainda não confirmado. Verifique sua caixa.";
