@@ -1,6 +1,6 @@
 [package]
 name = "notedo"
-version = "4.0.2"
+version = "4.0.3"
 description = "Notedo — app de estudos offline"
 authors = ["João Pedro Cândido"]
 edition = "2021"
